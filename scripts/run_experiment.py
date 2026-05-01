@@ -34,14 +34,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-queries", type=int, default=100)
     parser.add_argument("--cache-dir", default=None)
     parser.add_argument("--retriever", choices=["bm25", "dense"], default="bm25")
-    parser.add_argument("--generator", choices=["heuristic", "openai"], default="heuristic")
-    parser.add_argument("--model", default="gpt-4.1-mini")
-    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--generator", choices=["heuristic", "openai", "openrouter"], default="heuristic")
+    parser.add_argument("--model", default="openai/gpt-5-mini")
+    parser.add_argument("--temperature", type=float, default=None)
     parser.add_argument("--max-output-tokens", type=int, default=512)
+    parser.add_argument(
+        "--token-param",
+        choices=["auto", "max_tokens", "max_completion_tokens", "none"],
+        default="none",
+    )
+    parser.add_argument("--base-url", default="https://openrouter.ai/api/v1")
+    parser.add_argument("--api-key-env", default="OPENROUTER_API_KEY")
+    parser.add_argument("--referer", default=None)
+    parser.add_argument("--app-title", default="expected-answer-rag")
+    parser.add_argument("--include-reasoning", action="store_true")
+    parser.add_argument("--reasoning-effort", default=None)
     parser.add_argument("--generation-cache", default="outputs/generation_cache.json")
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--output", default="outputs/run.json")
     parser.add_argument("--records-output", default="outputs/records.jsonl")
+    parser.add_argument("--clear-generation-cache", action="store_true")
     return parser.parse_args()
 
 
@@ -58,15 +70,24 @@ def main() -> None:
         f"queries={len(dataset.queries)}, qrels_queries={len(dataset.qrels)}"
     )
     retriever = make_retriever(args.retriever, dataset.corpus)
-    if args.generator == "openai":
+    if args.generator in {"openai", "openrouter"}:
         base_generator = OpenAITextGenerator(
             model=args.model,
             temperature=args.temperature,
             max_output_tokens=args.max_output_tokens,
+            token_param=args.token_param,
+            base_url=args.base_url,
+            api_key_env=args.api_key_env,
+            referer=args.referer,
+            app_title=args.app_title,
+            include_reasoning=args.include_reasoning,
+            reasoning_effort=args.reasoning_effort,
         )
     else:
         base_generator = HeuristicGenerator()
     cache_path = _resolve_path(args.generation_cache)
+    if args.clear_generation_cache and cache_path.exists():
+        cache_path.unlink()
     generator = CachedTextGenerator(
         inner=base_generator,
         cache=JsonCache(cache_path),
@@ -89,7 +110,7 @@ def main() -> None:
 
     for query in tqdm(dataset.queries, desc="Running queries"):
         expected = generator.expected_answer(query.text)
-        masked = generator.mask_answer(expected)
+        masked = generator.mask_answer(query.text, expected)
         hyde_doc = generator.hyde_document(query.text)
         features = generation_features(query, expected, masked, hyde_doc)
         features_by_query[query.query_id] = features
@@ -149,7 +170,7 @@ def main() -> None:
         "num_qrels_queries": len(dataset.qrels),
         "retriever": args.retriever,
         "generator": args.generator,
-        "model": args.model if args.generator == "openai" else None,
+        "model": args.model if args.generator in {"openai", "openrouter"} else None,
         "top_k": args.top_k,
         "metrics": metrics,
         "method_ranking": compare_methods(metrics),
