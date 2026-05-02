@@ -21,8 +21,8 @@ from expected_answer_rag.analysis import (
 )
 from expected_answer_rag.cache import JsonCache
 from expected_answer_rag.datasets import load_dataset
-from expected_answer_rag.fusion import reciprocal_rank_fusion
-from expected_answer_rag.generators import CachedTextGenerator, HeuristicGenerator, OpenAITextGenerator
+from expected_answer_rag.fusion import reciprocal_rank_fusion, weighted_reciprocal_rank_fusion
+from expected_answer_rag.generators import CachedTextGenerator, HeuristicGenerator, MissingGenerator, OpenAITextGenerator
 from expected_answer_rag.metrics import evaluate_run
 from expected_answer_rag.retrieval import RankedList, make_retriever
 
@@ -34,6 +34,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-queries", type=int, default=100)
     parser.add_argument("--cache-dir", default=None)
     parser.add_argument("--retriever", choices=["bm25", "dense"], default="bm25")
+    parser.add_argument("--embedding-model", default="BAAI/bge-base-en-v1.5")
+    parser.add_argument("--embedding-batch-size", type=int, default=64)
+    parser.add_argument("--embedding-chunk-size", type=int, default=1024)
+    parser.add_argument("--embedding-cache", default=None)
+    parser.add_argument(
+        "--query-prefix",
+        default="Represent this sentence for searching relevant passages: ",
+        help="Prefix applied only to dense retrieval queries. Use '' to disable.",
+    )
     parser.add_argument("--generator", choices=["heuristic", "openai", "openrouter"], default="heuristic")
     parser.add_argument("--model", default="openai/gpt-5-mini")
     parser.add_argument("--temperature", type=float, default=None)
@@ -51,9 +60,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reasoning-effort", default=None)
     parser.add_argument("--generation-cache", default="outputs/generation_cache.json")
     parser.add_argument("--top-k", type=int, default=20)
+    parser.add_argument(
+        "--answer-rrf-weights",
+        default="0.25,0.5,0.75",
+        help="Comma-separated answer-route weights for weighted RRF. Query route weight is 1.0.",
+    )
     parser.add_argument("--output", default="outputs/run.json")
     parser.add_argument("--records-output", default="outputs/records.jsonl")
     parser.add_argument("--clear-generation-cache", action="store_true")
+    parser.add_argument(
+        "--cache-only",
+        action="store_true",
+        help="Use existing generation cache and fail if any generation is missing.",
+    )
+    parser.add_argument(
+        "--cache-namespace",
+        default=None,
+        help="Override generation cache namespace, useful for cache-only reruns.",
+    )
     return parser.parse_args()
 
 
@@ -69,8 +93,18 @@ def main() -> None:
         f"Loaded {dataset.name}: corpus={len(dataset.corpus)}, "
         f"queries={len(dataset.queries)}, qrels_queries={len(dataset.qrels)}"
     )
-    retriever = make_retriever(args.retriever, dataset.corpus)
-    if args.generator in {"openai", "openrouter"}:
+    retriever = make_retriever(
+        args.retriever,
+        dataset.corpus,
+        embedding_model=args.embedding_model,
+        embedding_batch_size=args.embedding_batch_size,
+        query_prefix=args.query_prefix,
+        embedding_cache=_resolve_path(args.embedding_cache) if args.embedding_cache else None,
+        embedding_chunk_size=args.embedding_chunk_size,
+    )
+    if args.cache_only:
+        base_generator = MissingGenerator()
+    elif args.generator in {"openai", "openrouter"}:
         base_generator = OpenAITextGenerator(
             model=args.model,
             temperature=args.temperature,
@@ -91,7 +125,7 @@ def main() -> None:
     generator = CachedTextGenerator(
         inner=base_generator,
         cache=JsonCache(cache_path),
-        namespace=f"{args.generator}:{args.model}:temp={args.temperature}",
+        namespace=args.cache_namespace or f"{args.generator}:{args.model}:temp={args.temperature}",
     )
 
     runs: Dict[str, Dict[str, RankedList]] = {
@@ -104,6 +138,11 @@ def main() -> None:
         "dual_query_raw_expected_rrf": {},
         "dual_query_masked_expected_rrf": {},
     }
+    answer_rrf_weights = _parse_float_list(args.answer_rrf_weights)
+    for weight in answer_rrf_weights:
+        suffix = _weight_suffix(weight)
+        runs[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = {}
+        runs[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = {}
     generations = {}
     features_by_query = {}
     records = []
@@ -147,6 +186,18 @@ def main() -> None:
             [query_rank, masked_rank],
             top_k=args.top_k,
         )
+        for weight in answer_rrf_weights:
+            suffix = _weight_suffix(weight)
+            runs[f"weighted_dual_query_raw_expected_rrf_w{suffix}"][query.query_id] = weighted_reciprocal_rank_fusion(
+                [query_rank, raw_rank],
+                [1.0, weight],
+                top_k=args.top_k,
+            )
+            runs[f"weighted_dual_query_masked_expected_rrf_w{suffix}"][query.query_id] = weighted_reciprocal_rank_fusion(
+                [query_rank, masked_rank],
+                [1.0, weight],
+                top_k=args.top_k,
+            )
         records.append(
             {
                 "query_id": query.query_id,
@@ -169,6 +220,10 @@ def main() -> None:
         "num_queries": len(dataset.queries),
         "num_qrels_queries": len(dataset.qrels),
         "retriever": args.retriever,
+        "embedding_model": args.embedding_model if args.retriever == "dense" else None,
+        "query_prefix": args.query_prefix if args.retriever == "dense" else None,
+        "embedding_cache": str(_resolve_path(args.embedding_cache)) if args.embedding_cache else None,
+        "answer_rrf_weights": answer_rrf_weights,
         "generator": args.generator,
         "model": args.model if args.generator in {"openai", "openrouter"} else None,
         "top_k": args.top_k,
@@ -199,6 +254,16 @@ def _resolve_path(path: str) -> Path:
     if not resolved.is_absolute():
         resolved = ROOT / resolved
     return resolved
+
+
+def _parse_float_list(text: str) -> list[float]:
+    if not text.strip():
+        return []
+    return [float(item.strip()) for item in text.split(",") if item.strip()]
+
+
+def _weight_suffix(weight: float) -> str:
+    return str(weight).replace(".", "p")
 
 
 if __name__ == "__main__":

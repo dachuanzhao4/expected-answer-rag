@@ -69,6 +69,35 @@ The generator uses OpenRouter's OpenAI-compatible Chat Completions format:
 from `OPENROUTER_API_KEY`, and `max_completion_tokens` for GPT-5 models. It
 does not pass `temperature` unless you explicitly set `--temperature`.
 
+## Dense Retriever Run
+
+Reuse an existing generation cache and run dense retrieval with BGE:
+
+```powershell
+& 'C:\Users\pc\AppData\Local\Programs\Python\Python313\python.exe' scripts\run_experiment.py --dataset nq --max-queries 50 --max-corpus 5000 --retriever dense --embedding-model BAAI/bge-base-en-v1.5 --embedding-batch-size 16 --embedding-chunk-size 512 --embedding-cache outputs\embeddings\nq_50_5k_bge_base --generator openrouter --model openai/gpt-5-mini --token-param none --generation-cache outputs\nq_50_query_aware_cache.json --cache-only --cache-namespace openrouter:openai/gpt-5-mini:temp=None --output outputs\nq_50_dense_bge_base_5k_weighted_run.json --records-output outputs\nq_50_dense_bge_base_5k_weighted_records.jsonl
+```
+
+Dense embedding caches are checkpointed by chunk. During a long run, completed
+chunks are written under:
+
+```text
+outputs/embeddings/<cache_name>_chunks/
+```
+
+If the run is interrupted, rerun the same command and existing chunks will be
+reused. When all chunks are complete, the final combined cache is written as:
+
+```text
+outputs/embeddings/<cache_name>.npy
+outputs/embeddings/<cache_name>.json
+```
+
+Longer 50k-corpus dense run:
+
+```powershell
+& 'C:\Users\pc\AppData\Local\Programs\Python\Python313\python.exe' scripts\run_experiment.py --dataset nq --max-queries 50 --max-corpus 50000 --retriever dense --embedding-model BAAI/bge-base-en-v1.5 --embedding-batch-size 16 --embedding-chunk-size 512 --embedding-cache outputs\embeddings\nq_50_50k_bge_base --generator openrouter --model openai/gpt-5-mini --token-param none --generation-cache outputs\nq_50_query_aware_cache.json --cache-only --cache-namespace openrouter:openai/gpt-5-mini:temp=None --output outputs\nq_50_dense_bge_base_50k_weighted_run.json --records-output outputs\nq_50_dense_bge_base_50k_weighted_records.jsonl
+```
+
 Outputs:
 
 - `outputs/*_run.json`: aggregate metrics, method ranking, generation summary,

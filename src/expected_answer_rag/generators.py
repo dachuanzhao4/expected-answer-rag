@@ -42,6 +42,20 @@ class HeuristicGenerator:
 
 
 @dataclass
+class MissingGenerator:
+    """Generator used when all generations must already exist in cache."""
+
+    def expected_answer(self, query: str) -> str:
+        raise RuntimeError(f"Missing cached expected answer for query: {query}")
+
+    def hyde_document(self, query: str) -> str:
+        raise RuntimeError(f"Missing cached HyDE document for query: {query}")
+
+    def mask_answer(self, query: str, expected_answer: str) -> str:
+        raise RuntimeError(f"Missing cached masked answer for query: {query}")
+
+
+@dataclass
 class OpenAITextGenerator:
     model: str = "openai/gpt-5-mini"
     temperature: float | None = None
