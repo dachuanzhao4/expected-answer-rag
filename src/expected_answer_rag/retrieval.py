@@ -4,6 +4,7 @@ import math
 import re
 import json
 import hashlib
+import os
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -75,6 +76,7 @@ class SentenceTransformerRetriever:
     query_prefix: str = "Represent this sentence for searching relevant passages: "
     embedding_cache: str | None = None
     chunk_size: int = 1024
+    local_files_only: bool = False
 
     def __post_init__(self) -> None:
         try:
@@ -85,7 +87,8 @@ class SentenceTransformerRetriever:
                 "Install 'sentence-transformers' and 'numpy' to use dense retrieval."
             ) from exc
         self._np = np
-        self._model = SentenceTransformer(self.model_name)
+        local_only = self.local_files_only or _env_truthy("HF_HUB_OFFLINE") or _env_truthy("TRANSFORMERS_OFFLINE") or _env_truthy("EXPECTED_ANSWER_RAG_LOCAL_FILES_ONLY")
+        self._model = SentenceTransformer(self.model_name, local_files_only=local_only)
         self._doc_ids = [doc.doc_id for doc in self.documents]
         cached = self._load_cached_embeddings()
         if cached is not None:
@@ -214,6 +217,7 @@ def make_retriever(
     query_prefix: str = "Represent this sentence for searching relevant passages: ",
     embedding_cache: str | None = None,
     embedding_chunk_size: int = 1024,
+    local_files_only: bool = False,
 ) -> Retriever:
     if kind == "bm25":
         return BM25Retriever(documents)
@@ -225,6 +229,7 @@ def make_retriever(
             query_prefix=query_prefix,
             embedding_cache=embedding_cache,
             chunk_size=embedding_chunk_size,
+            local_files_only=local_files_only,
         )
     raise ValueError(f"Unknown retriever kind: {kind}")
 
@@ -235,3 +240,8 @@ def _hash_strings(values: List[str]) -> str:
         digest.update(value.encode("utf-8"))
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def _env_truthy(name: str) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}

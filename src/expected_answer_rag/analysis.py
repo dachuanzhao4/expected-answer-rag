@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import re
-from collections import Counter
 from typing import Dict, Iterable, Mapping
 
 from expected_answer_rag.datasets import Query
+from expected_answer_rag.leakage import contains_any_alias, leakage_bucket_name, summarize_leakage_scores
 from expected_answer_rag.metrics import evaluate_run
 from expected_answer_rag.retrieval import RankedList
 
@@ -15,8 +15,10 @@ SLOT_RE = re.compile(r"\[[A-Z_]+\]")
 
 def generation_features(query: Query, expected: str, masked: str, hyde_doc: str) -> Dict[str, object]:
     return {
-        "contains_gold_answer": contains_any_answer(expected, query.answers),
-        "masked_contains_gold_answer": contains_any_answer(masked, query.answers),
+        "contains_gold_answer": contains_any_alias(expected, query.answers),
+        "contains_answer_alias": contains_any_alias(expected, query.all_answer_strings),
+        "masked_contains_gold_answer": contains_any_alias(masked, query.answers),
+        "masked_contains_answer_alias": contains_any_alias(masked, query.all_answer_strings),
         "expected_token_count": len(expected.split()),
         "hyde_token_count": len(hyde_doc.split()),
         "expected_capitalized_span_count": len(extract_capitalized_spans(expected)),
@@ -25,21 +27,9 @@ def generation_features(query: Query, expected: str, masked: str, hyde_doc: str)
     }
 
 
-def contains_any_answer(text: str, answers: Iterable[str]) -> bool | None:
-    normalized_text = normalize_for_match(text)
-    answer_list = [answer for answer in answers if answer]
-    if not answer_list:
-        return None
-    return any(normalize_for_match(answer) in normalized_text for answer in answer_list)
-
-
 def extract_capitalized_spans(text: str) -> list[str]:
     keep = {"The", "A", "An", "Question"}
     return [span for span in CAPITALIZED_RE.findall(text) if span not in keep]
-
-
-def normalize_for_match(text: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text.lower())).strip()
 
 
 def summarize_generation_features(records: Iterable[Mapping[str, object]]) -> Dict[str, float]:
@@ -58,7 +48,12 @@ def summarize_generation_features(records: Iterable[Mapping[str, object]]) -> Di
         values = [float(row[key]) for row in rows if row.get(key) is not None]
         summary[f"avg_{key}"] = sum(values) / len(values) if values else 0.0
 
-    for key in ["contains_gold_answer", "masked_contains_gold_answer"]:
+    for key in [
+        "contains_gold_answer",
+        "contains_answer_alias",
+        "masked_contains_gold_answer",
+        "masked_contains_answer_alias",
+    ]:
         values = [row.get(key) for row in rows if row.get(key) is not None]
         if values:
             summary[f"rate_{key}"] = sum(1 for value in values if value) / len(values)
@@ -70,19 +65,10 @@ def evaluate_by_leakage_bucket(
     qrels: Mapping[str, Mapping[str, int]],
     features_by_query: Mapping[str, Mapping[str, object]],
 ) -> Dict[str, Dict[str, float]]:
-    buckets = {
-        "expected_contains_gold": set(),
-        "expected_not_contains_gold": set(),
-        "unknown_gold_answer": set(),
-    }
+    buckets: dict[str, set[str]] = {}
     for qid, features in features_by_query.items():
-        value = features.get("contains_gold_answer")
-        if value is True:
-            buckets["expected_contains_gold"].add(qid)
-        elif value is False:
-            buckets["expected_not_contains_gold"].add(qid)
-        else:
-            buckets["unknown_gold_answer"].add(qid)
+        bucket = str(features.get("leakage_bucket") or leakage_bucket_name(features))
+        buckets.setdefault(bucket, set()).add(qid)
 
     results: Dict[str, Dict[str, float]] = {}
     for bucket, qids in buckets.items():
@@ -106,3 +92,10 @@ def compare_methods(metrics: Mapping[str, Mapping[str, float]], primary_metric: 
             }
         )
     return sorted(rows, key=lambda row: float(row[primary_metric]), reverse=True)
+
+
+def summarize_method_leakage(leakage_records: Mapping[str, Iterable[Mapping[str, object]]]) -> dict[str, dict[str, float]]:
+    return {
+        method: summarize_leakage_scores(records)
+        for method, records in leakage_records.items()
+    }

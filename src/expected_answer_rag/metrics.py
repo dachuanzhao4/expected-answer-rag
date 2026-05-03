@@ -23,6 +23,19 @@ def evaluate_run(
     return metrics
 
 
+def per_query_metrics(
+    ranking: RankedList,
+    rels: Mapping[str, int],
+    ks: Iterable[int] = (5, 10, 20),
+) -> Dict[str, float]:
+    metrics = {}
+    for k in ks:
+        metrics[f"recall@{k}"] = _recall_at_k(ranking, rels, k)
+    metrics["mrr@10"] = _mrr_at_k(ranking, rels, 10)
+    metrics["ndcg@10"] = _ndcg_at_k(ranking, rels, 10)
+    return metrics
+
+
 def _recall_at_k(ranking: RankedList, rels: Mapping[str, int], k: int) -> float:
     relevant = {doc_id for doc_id, score in rels.items() if score > 0}
     if not relevant:

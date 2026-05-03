@@ -19,6 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-corpus", type=int, default=None)
     parser.add_argument("--max-queries", type=int, default=100)
     parser.add_argument("--cache-dir", default=None)
+    parser.add_argument("--query-metadata", default=None)
     parser.add_argument("--output", default="outputs/dataset_preview.json")
     return parser.parse_args()
 
@@ -30,6 +31,7 @@ def main() -> None:
         max_corpus=args.max_corpus,
         max_queries=args.max_queries,
         cache_dir=args.cache_dir,
+        query_metadata_path=args.query_metadata,
     )
     preview = {
         "dataset": dataset.name,
