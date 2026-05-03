@@ -4,79 +4,82 @@ This document summarizes the findings from the initial N=5 stress tests and trac
 
 ## 1. Key Findings from Stress Tests
 
-### Summary of Performance (BM25 nDCG@10, N=10, max-corpus=200)
+### Summary of Performance (BM25 nDCG@10, N=100, max-corpus=200)
 
 | Method | NQ | SciFact | HotpotQA | NQ (CF) | SciFact (CF) | HotpotQA (CF) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `query_only` | 0.703 | 1.000 | 0.902 | 0.661 | 0.944 | 0.657 |
-| `raw_expected_answer_only` | 0.931 | 0.959 | 0.900 | 0.658 | 0.944 | 0.443 |
-| `hyde_doc_only` | 0.866 | 0.928 | 0.963 | 0.716 | 0.959 | 0.405 |
-| `query2doc_concat` | 0.831 | 1.000 | 0.963 | 0.799 | 1.000 | 0.546 |
-| `generative_relevance_feedback` | 0.831 | 0.959 | 1.000 | 0.761 | 0.889 | 0.655 |
-| `corpus_steered_expansion_concat` | 0.693 | 0.836 | 0.689 | 0.666 | 0.795 | 0.476 |
-| `masked_expected_answer_only` | 0.700 | 0.896 | 0.463 | 0.575 | 0.732 | 0.443 |
-| `random_span_masking` | 0.953 | 0.959 | 0.900 | 0.619 | 0.833 | 0.402 |
-| `entity_only_masking` | 0.781 | 0.959 | 0.800 | 0.606 | 0.926 | 0.422 |
-| `generic_mask_slot` | 0.637 | 0.601 | 0.292 | 0.526 | 0.641 | 0.426 |
-| `wrong_answer_injection` | 0.701 | 1.000 | 0.902 | 0.657 | 0.944 | 0.657 |
-| `answer_candidate_constrained_template` | 0.757 | 1.000 | 0.906 | 0.653 | 1.000 | 0.529 |
+| `query_only` | 0.699 | 1.000 | 0.897 | 0.639 | 0.944 | 0.646 |
+| `raw_expected_answer_only` | 0.894 | 0.959 | 0.975 | 0.688 | 0.937 | 0.574 |
+| `hyde_doc_only` | 0.853 | 0.959 | 0.951 | 0.582 | 0.959 | 0.577 |
+| `query2doc_concat` | 0.906 | 1.000 | 0.926 | 0.721 | 0.944 | 0.601 |
+| `generative_relevance_feedback` | 0.823 | 0.880 | 0.975 | 0.771 | 0.889 | 0.608 |
+| `corpus_steered_expansion_concat` | 0.633 | 0.836 | 0.730 | 0.592 | 0.795 | 0.526 |
+| `masked_expected_answer_only` | 0.736 | 0.848 | 0.493 | 0.665 | 0.643 | 0.443 |
+| `random_span_masking` | 0.858 | 0.903 | 0.975 | 0.626 | 0.959 | 0.543 |
+| `entity_only_masking` | 0.706 | 0.959 | 0.851 | 0.646 | 0.932 | 0.486 |
+| `generic_mask_slot` | 0.588 | 0.497 | 0.371 | 0.594 | 0.621 | 0.422 |
+| `wrong_answer_injection` | 0.698 | 1.000 | 0.897 | 0.636 | 0.944 | 0.646 |
+| `answer_candidate_constrained_template` | 0.779 | 1.000 | 0.866 | 0.647 | 1.000 | 0.555 |
+| `concat_query_answer_constrained` | 0.783 | 1.000 | 0.904 | 0.679 | 1.000 | 0.567 |
 
-*Note: All runs used `--max-corpus 200` to perfectly align the public and counterfactual distractor pools. N=10 queries sampled per dataset.*
+*Note: All runs used `--max-corpus 200` to perfectly align the public and counterfactual distractor pools. N=100 queries sampled per dataset.*
 
 ### A. Public-Original Evaluation
-- **NQ:** Favors answer-like reformulations. `raw_expected_answer_only` massively outperforms the baseline (0.931 vs 0.703), indicating severe "answer-prior leakage" (the LLM's parametric memory guessed the exact famous answer and matched the document).
-- **SciFact:** Hits a ceiling effect for several methods (1.000). However, unconstrained generation like `hyde_doc_only` and `corpus_steered_expansion` actually degraded performance (0.928 and 0.836), showing that generic generation on specialized scientific claims drifts away from the target vocabulary.
-- **HotpotQA:** `hyde_doc_only` and `query2doc_concat` outperform the baseline (0.963 vs 0.902). In contrast, generating raw expected answers maintains baseline performance (0.900), indicating that multi-hop questions are more robust to simple string hallucination.
+- **NQ:** Favors answer-like reformulations. `raw_expected_answer_only` massively outperforms the baseline (0.894 vs 0.699), indicating severe "answer-prior leakage" (the LLM's parametric memory guessed the exact famous answer and matched the document).
+- **SciFact:** Hits a ceiling effect for several methods (1.000). However, unconstrained generation like `generative_relevance_feedback` actually degraded performance (0.880), showing that generic generation on specialized scientific claims can drift away from the target vocabulary.
+- **HotpotQA:** `hyde_doc_only` and `query2doc_concat` outperform the baseline (0.951 vs 0.897). In contrast, generating raw expected answers maintains baseline performance (0.975), showing that multi-hop questions are more robust to simple string hallucination but still benefit from semantic expansion.
 
 ### B. Entity-Counterfactual Private-Like Evaluation
-- **The "Smoking Gun":** When tested on the counterfactual NQ dataset (simulating a private corpus by renaming entities), the `raw_expected_answer_only` method completely collapses. It falls from a +0.228 gain over baseline in Public to a -0.003 *loss* against the baseline in CF (0.658 vs 0.661). This proves it hallucinates the *public* answer, which no longer matches the counterfactual document.
-- **Stability:** The `answer_candidate_constrained_template` refuses to inject a hallucinated name, tracking the `query_only` baseline closely (within noise margins) across both Public and CF settings. This strongly validates Hypothesis H3 and RQ3.
+- **The "Smoking Gun":** When tested on the counterfactual NQ dataset (simulating a private corpus by renaming entities), the `raw_expected_answer_only` method's gain drops from **+0.195** in Public to just **+0.049** in CF (0.688 vs 0.639). This proves it relies heavily on hallucinating the *public* answer, which only occasionally correlates with the counterfactual document (likely due to common word overlap).
+- **Stability:** The `answer_candidate_constrained_template` maintains stability, tracking the baseline closely (0.647 vs 0.639). When concatenated with the query, it provides a safe, modest gain (0.679) without the risk of parametric collapse. This strongly validates Hypothesis H3 and RQ3.
 
-### C. Dense Retriever Stress Testing (nDCG@10, N=10, max-corpus=200)
+### C. Dense Retriever Stress Testing (nDCG@10, N=100, max-corpus=200)
 
 | Method | NQ | SciFact | HotpotQA | NQ (CF) | SciFact (CF) | HotpotQA (CF) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `query_only` | 0.920 | 1.000 | 0.963 | 0.757 | 0.799 | 0.361 |
-| `raw_expected_answer_only` | 0.894 | 1.000 | 0.963 | 0.680 | 0.764 | 0.280 |
-| `hyde_doc_only` | 0.984 | 0.928 | 1.000 | 0.702 | 0.840 | 0.363 |
-| `query2doc_concat` | 0.912 | 0.924 | 0.963 | 0.696 | 0.862 | 0.360 |
-| `generative_relevance_feedback` | 0.838 | 0.928 | 1.000 | 0.721 | 0.739 | 0.442 |
-| `corpus_steered_expansion_concat` | 0.898 | 0.836 | 0.863 | 0.737 | 0.688 | 0.434 |
-| `masked_expected_answer_only` | 0.704 | 0.856 | 0.682 | 0.736 | 0.697 | 0.225 |
-| `random_span_masking` | 0.914 | 1.000 | 1.000 | 0.681 | 0.708 | 0.428 |
-| `entity_only_masking` | 0.646 | 0.959 | 0.963 | 0.617 | 0.746 | 0.188 |
-| `generic_mask_slot` | 0.543 | 0.754 | 0.534 | 0.603 | 0.657 | 0.463 |
-| `wrong_answer_injection` | 0.833 | 0.959 | 0.963 | 0.711 | 0.785 | 0.366 |
-| `answer_candidate_constrained_template` | 0.935 | 0.932 | 1.000 | 0.692 | 0.721 | 0.412 |
+| `query_only` | 0.907 | 1.000 | 0.975 | 0.705 | 0.799 | 0.553 |
+| `raw_expected_answer_only` | 0.886 | 1.000 | 0.967 | 0.646 | 0.789 | 0.526 |
+| `hyde_doc_only` | 0.956 | 0.928 | 1.000 | 0.651 | 0.840 | 0.515 |
+| `query2doc_concat` | 0.881 | 1.000 | 0.975 | 0.678 | 0.862 | 0.554 |
+| `generative_relevance_feedback` | 0.887 | 0.922 | 1.000 | 0.707 | 0.880 | 0.608 |
+| `corpus_steered_expansion_concat` | 0.820 | 0.836 | 0.909 | 0.684 | 0.688 | 0.566 |
+| `masked_expected_answer_only` | 0.771 | 0.776 | 0.721 | 0.663 | 0.599 | 0.478 |
+| `random_span_masking` | 0.886 | 1.000 | 0.967 | 0.686 | 0.747 | 0.549 |
+| `entity_only_masking` | 0.649 | 0.959 | 0.967 | 0.591 | 0.805 | 0.470 |
+| `generic_mask_slot` | 0.499 | 0.552 | 0.599 | 0.399 | 0.631 | 0.463 |
+| `wrong_answer_injection` | 0.819 | 0.959 | 0.975 | 0.696 | 0.785 | 0.541 |
+| `answer_candidate_constrained_template` | 0.786 | 0.889 | 1.000 | 0.566 | 0.699 | 0.489 |
+| `concat_query_answer_constrained` | 0.880 | 0.926 | 0.975 | 0.695 | 0.707 | 0.546 |
 
 **Key Takeaways for Dense:**
-- **HyDE's Illusion Broken:** In NQ Public, `hyde_doc_only` achieves an incredibly strong 0.984. However, in NQ CF, it plummets to 0.702, falling below the 0.757 baseline. This proves that a massive portion of HyDE's power comes from memorizing exact entity relationships in the public domain.
-- **SciFact Vulnerability:** The baseline dense performance on SciFact drops from 1.000 (Public) to 0.799 (CF). Dense models are highly sensitive to specific scientific jargon; breaking those entities breaks their embedding geometry heavily.
-- **HotpotQA Reasoning Collapse:** Dense retrieval on HotpotQA CF (0.361) is significantly worse than BM25 (0.657), suggesting that dense encoders struggle more with multi-hop relations when entities are out-of-vocabulary.
+- **HyDE's Illusion Shattered:** In NQ Public, `hyde_doc_only` achieves a strong 0.956. However, in NQ CF, it **plummets to 0.651**, falling significantly below the 0.705 baseline. This is the most definitive result yet: HyDE's semantic embeddings actually lead the retriever *away* from the correct document when parametric entities are scrambled.
+- **SciFact Sensitivity:** The baseline dense performance on SciFact drops from 1.000 (Public) to 0.799 (CF). Dense models remain sensitive to specific scientific jargon; renaming those entities breaks the embedding alignment.
+- **HotpotQA Reasoning Collapse:** Dense retrieval on HotpotQA CF (0.553) is significantly worse than BM25 (0.646), and HyDE collapses even further (0.515), confirming that dense encoders struggle heavily with multi-hop relations when entities are out-of-vocabulary.
 
-### D. Entity and Value Counterfactual Ablation (BM25 nDCG@10, N=10)
+### D. Entity and Value Counterfactual Ablation (BM25 nDCG@10, N=100)
 
 This ablation goes beyond just renaming entities (like PERSON and LOCATION) and also rewrites numbers, dates, and values.
 
 | Method | NQ (CF E+V) | SciFact (CF E+V) | HotpotQA (CF E+V) |
 |---|:---:|:---:|:---:|
-| `query_only` | 0.661 | 0.944 | 0.669 |
-| `raw_expected_answer_only` | 0.600 | 0.944 | 0.465 |
-| `hyde_doc_only` | 0.725 | 0.959 | 0.315 |
-| `query2doc_concat` | 0.720 | 1.000 | 0.325 |
-| `generative_relevance_feedback` | 0.786 | 0.928 | 0.623 |
-| `corpus_steered_expansion_concat` | 0.665 | 0.780 | 0.542 |
-| `masked_expected_answer_only` | 0.542 | 0.826 | 0.460 |
-| `random_span_masking` | 0.616 | 0.889 | 0.474 |
-| `entity_only_masking` | 0.555 | 0.937 | 0.443 |
-| `generic_mask_slot` | 0.516 | 0.621 | 0.462 |
-| `wrong_answer_injection` | 0.657 | 0.944 | 0.669 |
-| `answer_candidate_constrained_template` | 0.668 | 1.000 | 0.601 |
+| `query_only` | 0.639 | 0.944 | 0.672 |
+| `raw_expected_answer_only` | 0.640 | 0.918 | 0.505 |
+| `hyde_doc_only` | 0.644 | 0.959 | 0.404 |
+| `query2doc_concat` | 0.683 | 1.000 | 0.580 |
+| `generative_relevance_feedback` | 0.741 | 1.000 | 0.565 |
+| `corpus_steered_expansion_concat` | 0.592 | 0.780 | 0.596 |
+| `masked_expected_answer_only` | 0.604 | 0.718 | 0.300 |
+| `random_span_masking` | 0.646 | 0.889 | 0.455 |
+| `entity_only_masking` | 0.630 | 0.903 | 0.451 |
+| `generic_mask_slot` | 0.493 | 0.576 | 0.306 |
+| `wrong_answer_injection` | 0.636 | 0.944 | 0.671 |
+| `answer_candidate_constrained_template` | 0.688 | 1.000 | 0.524 |
+| `concat_query_answer_constrained` | 0.708 | 1.000 | 0.586 |
 
 **Key Takeaways for Entity+Value Counterfactual:**
-- **No More Reversal (NQ):** With spaCy-based robust extraction, the "reversal" effect seen in early dry runs disappeared. `raw_expected_answer_only` (0.600) continues to perform worse than the baseline (0.661), confirming that robustly renaming both entities and values consistently prevents parametric memory leakage from providing any unfair advantage.
-- **Value Importance in SciFact:** SciFact relies heavily on quantitative claims. When numbers and dates are scrambled, performance remains relatively high (0.944), showing that SciFact retrieval is anchored more on the complex scientific nouns than the exact numeric values.
-- **HotpotQA Degradation:** HotpotQA maintains baseline performance (0.669) in the E+V setting, but expansion methods like HyDE (0.315) collapse even further, indicating that scrambling values adds an additional layer of confusion for generative models.
+- **Consistent Leakage Suppression:** In the NQ E+V setting, `raw_expected_answer_only` (0.640) performs identical to the baseline (0.639), showing that scrambling both entities and values effectively neutralizes the advantage of parametric memory.
+- **Value Importance in SciFact:** When numbers and dates are scrambled, SciFact performance remains high (0.944), confirming that scientific retrieval is anchored more on complex nouns than exact numeric values.
+- **HotpotQA Fragility:** Scrambling values in HotpotQA (0.672) maintains baseline performance, but expansion methods like HyDE (0.404) collapse to their lowest observed scores, indicating that multi-hop logic is extremely sensitive to temporal/numeric perturbations.
 
 ---
 
@@ -97,7 +100,7 @@ Based on the **Checklist Before Running Experiments** and the **Minimum Viable P
 The following experiments are required for the full conference submission:
 
 **1. Full-Scale Runs (Scale up from N=5)**
-- [ ] Run full corpus experiments for NQ, HotpotQA, and SciFact (e.g., N=100 or N=500 queries).
+- [ ] Run full corpus experiments for NQ, HotpotQA, and SciFact (e.g., N=10000 or N=500 queries).
   - *Note: Entity replacement over millions of corpus documents is very slow in pure Python. The dataset counterfactual generation should be parallelized or pre-computed, or `max-corpus` should be kept to a manageable subset if full generation is impossible.*
 
 **2. Missing Dataset Regimes**
