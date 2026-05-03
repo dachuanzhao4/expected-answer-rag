@@ -4,6 +4,181 @@ Minimal experiment scaffold for comparing standard query retrieval, HyDE-style
 hypothetical documents, concise expected answers, answer masking, and dual-route
 late-fusion retrieval.
 
+## Plan 1: Private-Like Leakage Bias Study
+
+### Research Hypothesis
+
+HyDE-style retrieval can work very well on public Wikipedia-like QA benchmarks
+because the LLM may already have useful answer priors from pretraining. In that
+setting, generating a hypothetical answer passage can accidentally inject the
+right answer and improve retrieval.
+
+The same behavior can be harmful in private-domain RAG. For internal enterprise
+corpora, the LLM often does not know the ground-truth answer. A hypothetical
+answer passage may then introduce unsupported names, teams, dates, project codes,
+or policies, steering retrieval toward the model's prior instead of the private
+corpus evidence.
+
+This project studies that gap:
+
+```text
+Public QA:   HyDE may benefit from memorized or broadly learned answer priors.
+Private RAG: HyDE may inject wrong answer candidates and retrieval bias.
+```
+
+The goal is not simply to beat HyDE on public benchmarks. The goal is to measure
+and reduce **prior-induced retrieval bias** when LLM priors are unreliable.
+
+Planned mitigation methods:
+
+- `query-aware masking`: generate answer-like text, then replace only the
+  answer-bearing span with a typed slot such as `[PERSON]`, `[LOCATION]`, or
+  `[NUMBER]`.
+- `answer-agnostic templates`: generate retrieval expressions with known query
+  anchors and typed unknown slots, without generating a concrete answer.
+
+The key experimental direction is to compare these methods on both normal public
+QA data and private-like data where LLM answer priors should not help.
+
+### Private-Like Benchmark Plan
+
+To simulate private enterprise data in a reproducible way, build a renamed QA
+benchmark from public QA corpora:
+
+```text
+Original:
+Marie Curie was born in Warsaw.
+Where was Marie Curie born?
+
+Private-like renamed:
+Employee ZQ-17 was born in Site LM-42.
+Where was Employee ZQ-17 born?
+```
+
+The corpus and query are renamed consistently, so the answer is still present in
+the documents. But the LLM should no longer know the answer from pretraining.
+
+Expected behavior:
+
+- `HyDE` may hallucinate or inject wrong answer candidates.
+- `masked HyDE / masked expected answer` should reduce wrong answer steering.
+- `answer-agnostic templates` should avoid concrete answer injection entirely.
+
+Important metrics:
+
+- Retrieval quality: `Recall@k`, `MRR@10`, `nDCG@10`
+- Answer leakage rate: whether generated retrieval text contains the gold answer
+- Wrong answer injection rate: whether generated text introduces unsupported
+  entities or values
+- Robustness on query-only failure cases
+
+### Answer-Agnostic Template JSON
+
+The template method should generate retrieval plans that preserve known query
+anchors but represent the unknown answer only as a typed slot. A reasonable JSON
+format is:
+
+```json
+{
+  "known_anchors": [
+    {
+      "text": "Love Will Keep Us Alive",
+      "type": "TITLE",
+      "role": "song"
+    },
+    {
+      "text": "Eagles",
+      "type": "ORGANIZATION",
+      "role": "artist_or_band"
+    }
+  ],
+  "unknown_answer": {
+    "slot": "[PERSON]",
+    "type": "PERSON",
+    "role": "singer_or_lead_vocalist"
+  },
+  "relation_intent": "performer / lead vocalist",
+  "leakage_free_queries": [
+    "\"Love Will Keep Us Alive\" Eagles lead vocals",
+    "\"Love Will Keep Us Alive\" features lead vocals by [PERSON]",
+    "Eagles \"Love Will Keep Us Alive\" vocalist",
+    "\"Love Will Keep Us Alive\" singer Eagles"
+  ],
+  "evidence_templates": [
+    "\"Love Will Keep Us Alive\" features lead vocals by [PERSON].",
+    "[PERSON] sings \"Love Will Keep Us Alive\" by the Eagles."
+  ],
+  "constraints": {
+    "do_not_generate_concrete_answer": true,
+    "only_use_entities_from_question": true,
+    "preserve_known_anchors": true
+  }
+}
+```
+
+For a private-style renamed query:
+
+```text
+Where was Employee ZQ-17 born?
+```
+
+the plan should look like:
+
+```json
+{
+  "known_anchors": [
+    {
+      "text": "Employee ZQ-17",
+      "type": "PERSON",
+      "role": "subject"
+    }
+  ],
+  "unknown_answer": {
+    "slot": "[LOCATION]",
+    "type": "LOCATION",
+    "role": "birthplace"
+  },
+  "relation_intent": "birthplace",
+  "leakage_free_queries": [
+    "Employee ZQ-17 birthplace",
+    "Employee ZQ-17 born in [LOCATION]",
+    "place of birth Employee ZQ-17"
+  ],
+  "evidence_templates": [
+    "Employee ZQ-17 was born in [LOCATION].",
+    "[LOCATION] is the birthplace of Employee ZQ-17."
+  ],
+  "constraints": {
+    "do_not_generate_concrete_answer": true,
+    "only_use_entities_from_question": true,
+    "preserve_known_anchors": true
+  }
+}
+```
+
+Retrieval can then use:
+
+```text
+retrieve(original query)
+retrieve(each leakage_free_query)
+retrieve(each evidence_template)
+merge with concat, RRF, or weighted RRF
+```
+
+The important constraint is that the template method should never introduce a
+new concrete answer candidate. It may introduce relation words such as
+`birthplace`, `lead vocals`, or `episodes`, but not a new person, location,
+date, project name, or value absent from the question.
+
+---
+
+## Plan 2: Expected Answer / HyDE Baseline Experiments
+
+This was the original experiment plan. It compares standard query retrieval,
+HyDE-style hypothetical passages, concise expected answers, query-aware masking,
+and fusion strategies. These experiments are still useful as baselines and
+motivation, but the stronger research direction is Plan 1.
+
 ## Setup
 
 ```powershell
