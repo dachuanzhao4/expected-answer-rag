@@ -684,15 +684,13 @@ def _closest_beta(betas: list[float], target: float) -> float:
 
 
 def _fielded_anchor_weighted_search(
-    retriever,
-    query_text: str,
-    expansion_text: str,
+    query_ranking: RankedList,
+    expansion_ranking: RankedList,
     beta: float,
     top_k: int,
-    doc_count: int,
 ) -> RankedList:
-    query_scores = dict(retriever.search(query_text, top_k=doc_count))
-    expansion_scores = dict(retriever.search(expansion_text, top_k=doc_count))
+    query_scores = dict(query_ranking)
+    expansion_scores = dict(expansion_ranking)
     doc_ids = set(query_scores) | set(expansion_scores)
     combined = [
         (doc_id, float(query_scores.get(doc_id, 0.0)) + float(beta) * float(expansion_scores.get(doc_id, 0.0)))
@@ -1409,6 +1407,7 @@ def _process_query(
     run_method_names: Iterable[str],
     checkpoint_context: Mapping[str, object],
 ) -> dict[str, object]:
+    selected_run_methods = set(run_method_names)
     relevant_docs = [doc_map[doc_id] for doc_id in dataset.qrels.get(query.query_id, {}) if doc_id in doc_map]
     query_rank = query_context["query_rank"]
     cf_prompt_support = query_context["cf_prompt_support"]
@@ -1453,19 +1452,6 @@ def _process_query(
     query_plus_neutral_filler = length_matched_filler
     neutral_filler_plus_query = _prepend_filler_to_query(query.text, expected)
     raw_expected_then_query = f"{expected}\n{query.text}".strip()
-
-    cf_prompt_bundle = _cf_prompt_subquery_bundle(
-        query_text=query.text,
-        query_rank=query_rank,
-        cf_prompt_payload=cf_prompt_payload,
-        retriever=retriever,
-        doc_map=doc_map,
-        top_k=args.top_k,
-        support_terms=cf_prompt_support["support_terms"],
-    )
-    cf_prompt_selected_queries = list(cf_prompt_bundle["selected_queries"])
-    cf_prompt_selected_weights = list(cf_prompt_bundle["selected_weights"])
-    cf_prompt_selected_joined = "\n".join(cf_prompt_selected_queries).strip()
     corpus_steered_text = str(query_context["corpus_steered_text"])
     corpus_steered_short_text = str(query_context["corpus_steered_short_text"])
 
@@ -1505,97 +1491,201 @@ def _process_query(
     }
     method_queries["query_only"] = query.text
 
+    search_cache: dict[tuple[str, int], RankedList] = {(query.text, args.top_k): query_rank}
+
+    def search_cached(text: str, top_k: int) -> RankedList:
+        key = (text, top_k)
+        ranking = search_cache.get(key)
+        if ranking is None:
+            ranking = retriever.search(text, top_k=top_k)
+            search_cache[key] = ranking
+        return ranking
+
+    needed_single_query_methods = _required_single_query_methods(selected_run_methods)
     rankings = {"query_only": query_rank}
-    for method_name, method_query in method_queries.items():
+    for method_name in needed_single_query_methods:
         if method_name == "query_only":
             continue
-        rankings[method_name] = retriever.search(method_query, top_k=args.top_k)
-    rankings["cf_prompt_query_expansion_rrf"] = weighted_reciprocal_rank_fusion(
-        [query_rank, *cf_prompt_bundle["rankings"]] if cf_prompt_bundle["rankings"] else [query_rank],
-        [1.0, *cf_prompt_selected_weights] if cf_prompt_bundle["rankings"] else [1.0],
-        top_k=args.top_k,
-    )
-    rankings["dual_query_raw_expected_rrf"] = reciprocal_rank_fusion([query_rank, rankings["raw_expected_answer_only"]], top_k=args.top_k)
-    rankings["dual_query_masked_expected_rrf"] = reciprocal_rank_fusion([query_rank, rankings["masked_expected_answer_only"]], top_k=args.top_k)
-    rankings["dual_query_answer_candidate_constrained_template_rrf"] = reciprocal_rank_fusion(
-        [query_rank, rankings["answer_candidate_constrained_template_only"]],
-        top_k=args.top_k,
-    )
-    rankings["rrf_query_masked_expected"] = rankings["dual_query_masked_expected_rrf"]
-    rankings["rrf_query_answer_constrained"] = rankings["dual_query_answer_candidate_constrained_template_rrf"]
-    rankings["rrf_query_wrong_answer"] = reciprocal_rank_fusion(
-        [query_rank, rankings["wrong_answer_only"]],
-        top_k=args.top_k,
-    )
-    rankings["rrf_query_corpus_steered_short"] = reciprocal_rank_fusion(
-        [query_rank, rankings["corpus_steered_short_concat"]],
-        top_k=args.top_k,
-    )
-    rankings["safe_rrf_v0"] = weighted_reciprocal_rank_fusion(
-        [
-            query_rank,
-            rankings["generative_relevance_feedback_concat"],
-            rankings["query2doc_concat"],
-            rankings["concat_query_answer_candidate_constrained_template"],
-        ],
-        [
-            SAFE_RRF_V0_WEIGHTS["query_only"],
-            SAFE_RRF_V0_WEIGHTS["generative_relevance_feedback_concat"],
-            SAFE_RRF_V0_WEIGHTS["query2doc_concat"],
-            SAFE_RRF_V0_WEIGHTS["concat_query_answer_candidate_constrained_template"],
-        ],
-        top_k=args.top_k,
-    )
+        rankings[method_name] = search_cached(method_queries[method_name], args.top_k)
+
+    needs_cf_prompt = "cf_prompt_query_expansion_rrf" in selected_run_methods
+    if needs_cf_prompt:
+        cf_prompt_bundle = _cf_prompt_subquery_bundle(
+            query_text=query.text,
+            query_rank=query_rank,
+            cf_prompt_payload=cf_prompt_payload,
+            retriever=retriever,
+            doc_map=doc_map,
+            top_k=args.top_k,
+            support_terms=cf_prompt_support["support_terms"],
+        )
+        cf_prompt_selected_queries = list(cf_prompt_bundle["selected_queries"])
+        cf_prompt_selected_weights = list(cf_prompt_bundle["selected_weights"])
+        rankings["cf_prompt_query_expansion_rrf"] = weighted_reciprocal_rank_fusion(
+            [query_rank, *cf_prompt_bundle["rankings"]] if cf_prompt_bundle["rankings"] else [query_rank],
+            [1.0, *cf_prompt_selected_weights] if cf_prompt_bundle["rankings"] else [1.0],
+            top_k=args.top_k,
+        )
+    else:
+        cf_prompt_bundle = {"selected_queries": [], "selected_roles": [], "selected_weights": [], "candidates": [], "rankings": []}
+        cf_prompt_selected_queries = []
+        cf_prompt_selected_weights = []
+    cf_prompt_selected_joined = "\n".join(cf_prompt_selected_queries).strip()
+
+    if "dual_query_raw_expected_rrf" in selected_run_methods:
+        rankings["dual_query_raw_expected_rrf"] = reciprocal_rank_fusion(
+            [query_rank, rankings["raw_expected_answer_only"]],
+            top_k=args.top_k,
+        )
+    if "dual_query_masked_expected_rrf" in selected_run_methods or "rrf_query_masked_expected" in selected_run_methods:
+        rankings["dual_query_masked_expected_rrf"] = reciprocal_rank_fusion(
+            [query_rank, rankings["masked_expected_answer_only"]],
+            top_k=args.top_k,
+        )
+        if "rrf_query_masked_expected" in selected_run_methods:
+            rankings["rrf_query_masked_expected"] = rankings["dual_query_masked_expected_rrf"]
+    if (
+        "dual_query_answer_candidate_constrained_template_rrf" in selected_run_methods
+        or "rrf_query_answer_constrained" in selected_run_methods
+    ):
+        rankings["dual_query_answer_candidate_constrained_template_rrf"] = reciprocal_rank_fusion(
+            [query_rank, rankings["answer_candidate_constrained_template_only"]],
+            top_k=args.top_k,
+        )
+        if "rrf_query_answer_constrained" in selected_run_methods:
+            rankings["rrf_query_answer_constrained"] = rankings["dual_query_answer_candidate_constrained_template_rrf"]
+    if "rrf_query_wrong_answer" in selected_run_methods:
+        rankings["rrf_query_wrong_answer"] = reciprocal_rank_fusion(
+            [query_rank, rankings["wrong_answer_only"]],
+            top_k=args.top_k,
+        )
+    if "rrf_query_corpus_steered_short" in selected_run_methods:
+        rankings["rrf_query_corpus_steered_short"] = reciprocal_rank_fusion(
+            [query_rank, rankings["corpus_steered_short_concat"]],
+            top_k=args.top_k,
+        )
+    if "safe_rrf_v0" in selected_run_methods:
+        rankings["safe_rrf_v0"] = weighted_reciprocal_rank_fusion(
+            [
+                query_rank,
+                rankings["generative_relevance_feedback_concat"],
+                rankings["query2doc_concat"],
+                rankings["concat_query_answer_candidate_constrained_template"],
+            ],
+            [
+                SAFE_RRF_V0_WEIGHTS["query_only"],
+                SAFE_RRF_V0_WEIGHTS["generative_relevance_feedback_concat"],
+                SAFE_RRF_V0_WEIGHTS["query2doc_concat"],
+                SAFE_RRF_V0_WEIGHTS["concat_query_answer_candidate_constrained_template"],
+            ],
+            top_k=args.top_k,
+        )
     for weight in answer_rrf_weights:
         suffix = _weight_suffix(weight)
-        rankings[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = weighted_reciprocal_rank_fusion(
-            [query_rank, rankings["raw_expected_answer_only"]],
-            [1.0, weight],
-            top_k=args.top_k,
-        )
-        rankings[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = weighted_reciprocal_rank_fusion(
-            [query_rank, rankings["masked_expected_answer_only"]],
-            [1.0, weight],
-            top_k=args.top_k,
-        )
-        rankings[f"weighted_rrf_query_answer_constrained_w{suffix}"] = weighted_reciprocal_rank_fusion(
-            [query_rank, rankings["answer_candidate_constrained_template_only"]],
-            [1.0, weight],
-            top_k=args.top_k,
-        )
+        raw_rrf_name = f"weighted_dual_query_raw_expected_rrf_w{suffix}"
+        masked_rrf_name = f"weighted_dual_query_masked_expected_rrf_w{suffix}"
+        answer_rrf_name = f"weighted_rrf_query_answer_constrained_w{suffix}"
+        if raw_rrf_name in selected_run_methods:
+            rankings[raw_rrf_name] = weighted_reciprocal_rank_fusion(
+                [query_rank, rankings["raw_expected_answer_only"]],
+                [1.0, weight],
+                top_k=args.top_k,
+            )
+        if masked_rrf_name in selected_run_methods:
+            rankings[masked_rrf_name] = weighted_reciprocal_rank_fusion(
+                [query_rank, rankings["masked_expected_answer_only"]],
+                [1.0, weight],
+                top_k=args.top_k,
+            )
+        if answer_rrf_name in selected_run_methods:
+            rankings[answer_rrf_name] = weighted_reciprocal_rank_fusion(
+                [query_rank, rankings["answer_candidate_constrained_template_only"]],
+                [1.0, weight],
+                top_k=args.top_k,
+            )
     named_fawe_betas = _resolve_named_fawe_betas(fawe_betas)
-    rankings["fawe_raw_expected_beta0p25"] = _fielded_anchor_weighted_search(
-        retriever=retriever,
-        query_text=query.text,
-        expansion_text=expected,
-        beta=named_fawe_betas["raw_expected"],
-        top_k=args.top_k,
-        doc_count=len(dataset.corpus),
+    needs_route_reliability = bool({"safe_rrf_v1", "fawe_safe_adaptive_beta"} & selected_run_methods)
+    route_reliability = {
+        "weights": dict(SAFE_RRF_V0_WEIGHTS),
+        "features": {},
+    }
+    safe_rrf_v1_weights = dict(SAFE_RRF_V0_WEIGHTS)
+    fawe_safe_beta = 0.2
+    if needs_route_reliability:
+        route_reliability = _route_reliability_bundle(
+            query_text=query.text,
+            query_rank=query_rank,
+            route_texts={
+                "generative_relevance_feedback_concat": relevance_feedback,
+                "query2doc_concat": query2doc_doc,
+                "concat_query_answer_candidate_constrained_template": template_retrieval_text,
+            },
+            route_rankings={
+                "generative_relevance_feedback_concat": rankings["generative_relevance_feedback_concat"],
+                "query2doc_concat": rankings["query2doc_concat"],
+                "concat_query_answer_candidate_constrained_template": rankings["concat_query_answer_candidate_constrained_template"],
+            },
+            doc_map=doc_map,
+            template_validation=template_validation,
+        )
+        safe_rrf_v1_weights = route_reliability["weights"]
+        fawe_safe_beta = _safe_adaptive_fawe_beta(route_reliability["features"], template_validation)
+    needs_fawe = bool(
+        {
+            "fawe_raw_expected_beta0p25",
+            "fawe_masked_expected_beta0p25",
+            "fawe_answer_constrained_beta0p5",
+            "fawe_query2doc_beta0p25",
+            "fawe_safe_adaptive_beta",
+        }
+        & selected_run_methods
     )
-    rankings["fawe_masked_expected_beta0p25"] = _fielded_anchor_weighted_search(
-        retriever=retriever,
-        query_text=query.text,
-        expansion_text=masked,
-        beta=named_fawe_betas["masked_expected"],
-        top_k=args.top_k,
-        doc_count=len(dataset.corpus),
-    )
-    rankings["fawe_answer_constrained_beta0p5"] = _fielded_anchor_weighted_search(
-        retriever=retriever,
-        query_text=query.text,
-        expansion_text=template_retrieval_text,
-        beta=named_fawe_betas["answer_constrained"],
-        top_k=args.top_k,
-        doc_count=len(dataset.corpus),
-    )
-    rankings["fawe_query2doc_beta0p25"] = _fielded_anchor_weighted_search(
-        retriever=retriever,
-        query_text=query.text,
-        expansion_text=query2doc_doc,
-        beta=named_fawe_betas["query2doc"],
-        top_k=args.top_k,
-        doc_count=len(dataset.corpus),
-    )
+    if needs_fawe:
+        full_query_ranking = search_cached(query.text, len(dataset.corpus))
+        fawe_expansion_rankings: dict[str, RankedList] = {}
+
+        def fawe_expansion_ranking(expansion_text: str) -> RankedList:
+            ranking = fawe_expansion_rankings.get(expansion_text)
+            if ranking is None:
+                ranking = search_cached(expansion_text, len(dataset.corpus))
+                fawe_expansion_rankings[expansion_text] = ranking
+            return ranking
+
+        if "fawe_raw_expected_beta0p25" in selected_run_methods:
+            rankings["fawe_raw_expected_beta0p25"] = _fielded_anchor_weighted_search(
+                query_ranking=full_query_ranking,
+                expansion_ranking=fawe_expansion_ranking(expected),
+                beta=named_fawe_betas["raw_expected"],
+                top_k=args.top_k,
+            )
+        if "fawe_masked_expected_beta0p25" in selected_run_methods:
+            rankings["fawe_masked_expected_beta0p25"] = _fielded_anchor_weighted_search(
+                query_ranking=full_query_ranking,
+                expansion_ranking=fawe_expansion_ranking(masked),
+                beta=named_fawe_betas["masked_expected"],
+                top_k=args.top_k,
+            )
+        if "fawe_answer_constrained_beta0p5" in selected_run_methods:
+            rankings["fawe_answer_constrained_beta0p5"] = _fielded_anchor_weighted_search(
+                query_ranking=full_query_ranking,
+                expansion_ranking=fawe_expansion_ranking(template_retrieval_text),
+                beta=named_fawe_betas["answer_constrained"],
+                top_k=args.top_k,
+            )
+        if "fawe_query2doc_beta0p25" in selected_run_methods:
+            rankings["fawe_query2doc_beta0p25"] = _fielded_anchor_weighted_search(
+                query_ranking=full_query_ranking,
+                expansion_ranking=fawe_expansion_ranking(query2doc_doc),
+                beta=named_fawe_betas["query2doc"],
+                top_k=args.top_k,
+            )
+        if "fawe_safe_adaptive_beta" in selected_run_methods:
+            rankings["fawe_safe_adaptive_beta"] = _fielded_anchor_weighted_search(
+                query_ranking=full_query_ranking,
+                expansion_ranking=fawe_expansion_ranking(template_retrieval_text),
+                beta=fawe_safe_beta,
+                top_k=args.top_k,
+            )
 
     base_features = generation_features(query, expected, masked, hyde_doc)
     generated_texts_for_leakage = {
@@ -1655,47 +1745,22 @@ def _process_query(
         "leakage_bucket": leakage_bucket_name(leakage_scores["raw_expected_answer_only"]),
         "raw_expected_answer_only": leakage_scores["raw_expected_answer_only"],
     }
-    route_reliability = _route_reliability_bundle(
-        query_text=query.text,
-        query_rank=query_rank,
-        route_texts={
-            "generative_relevance_feedback_concat": relevance_feedback,
-            "query2doc_concat": query2doc_doc,
-            "concat_query_answer_candidate_constrained_template": template_retrieval_text,
-        },
-        route_rankings={
-            "generative_relevance_feedback_concat": rankings["generative_relevance_feedback_concat"],
-            "query2doc_concat": rankings["query2doc_concat"],
-            "concat_query_answer_candidate_constrained_template": rankings["concat_query_answer_candidate_constrained_template"],
-        },
-        doc_map=doc_map,
-        template_validation=template_validation,
-    )
-    safe_rrf_v1_weights = route_reliability["weights"]
-    fawe_safe_beta = _safe_adaptive_fawe_beta(route_reliability["features"], template_validation)
-    rankings["fawe_safe_adaptive_beta"] = _fielded_anchor_weighted_search(
-        retriever=retriever,
-        query_text=query.text,
-        expansion_text=template_retrieval_text,
-        beta=fawe_safe_beta,
-        top_k=args.top_k,
-        doc_count=len(dataset.corpus),
-    )
-    rankings["safe_rrf_v1"] = weighted_reciprocal_rank_fusion(
-        [
-            query_rank,
-            rankings["generative_relevance_feedback_concat"],
-            rankings["query2doc_concat"],
-            rankings["concat_query_answer_candidate_constrained_template"],
-        ],
-        [
-            safe_rrf_v1_weights["query_only"],
-            safe_rrf_v1_weights["generative_relevance_feedback_concat"],
-            safe_rrf_v1_weights["query2doc_concat"],
-            safe_rrf_v1_weights["concat_query_answer_candidate_constrained_template"],
-        ],
-        top_k=args.top_k,
-    )
+    if "safe_rrf_v1" in selected_run_methods:
+        rankings["safe_rrf_v1"] = weighted_reciprocal_rank_fusion(
+            [
+                query_rank,
+                rankings["generative_relevance_feedback_concat"],
+                rankings["query2doc_concat"],
+                rankings["concat_query_answer_candidate_constrained_template"],
+            ],
+            [
+                safe_rrf_v1_weights["query_only"],
+                safe_rrf_v1_weights["generative_relevance_feedback_concat"],
+                safe_rrf_v1_weights["query2doc_concat"],
+                safe_rrf_v1_weights["concat_query_answer_candidate_constrained_template"],
+            ],
+            top_k=args.top_k,
+        )
     retrieval_strings = dict(method_queries)
     retrieval_strings["cf_prompt_query_expansion_rrf"] = cf_prompt_selected_joined or cf_prompt_joined
     retrieval_strings["fawe_raw_expected_beta0p25"] = _format_fawe_retrieval_text(query.text, expected, named_fawe_betas["raw_expected"])
@@ -1827,6 +1892,67 @@ def _process_query(
         "features_by_query": features_entry,
         "leakage_scores": leakage_scores,
     }
+
+
+def _required_single_query_methods(selected_methods: set[str]) -> set[str]:
+    needed = {"query_only"}
+    synthetic_methods = {
+        "query_only",
+        "dual_query_raw_expected_rrf",
+        "dual_query_masked_expected_rrf",
+        "dual_query_answer_candidate_constrained_template_rrf",
+        "rrf_query_masked_expected",
+        "rrf_query_answer_constrained",
+        "rrf_query_wrong_answer",
+        "rrf_query_corpus_steered_short",
+        "safe_rrf_v0",
+        "safe_rrf_v1",
+        "cf_prompt_query_expansion_rrf",
+        "fawe_raw_expected_beta0p25",
+        "fawe_masked_expected_beta0p25",
+        "fawe_answer_constrained_beta0p5",
+        "fawe_query2doc_beta0p25",
+        "fawe_safe_adaptive_beta",
+    }
+    for method_name in selected_methods:
+        if method_name in synthetic_methods:
+            continue
+        if method_name.startswith("weighted_dual_query_raw_expected_rrf_w"):
+            continue
+        if method_name.startswith("weighted_dual_query_masked_expected_rrf_w"):
+            continue
+        if method_name.startswith("weighted_rrf_query_answer_constrained_w"):
+            continue
+        needed.add(method_name)
+    if "dual_query_raw_expected_rrf" in selected_methods or any(
+        method_name.startswith("weighted_dual_query_raw_expected_rrf_w") for method_name in selected_methods
+    ):
+        needed.add("raw_expected_answer_only")
+    if (
+        "dual_query_masked_expected_rrf" in selected_methods
+        or "rrf_query_masked_expected" in selected_methods
+        or any(method_name.startswith("weighted_dual_query_masked_expected_rrf_w") for method_name in selected_methods)
+    ):
+        needed.add("masked_expected_answer_only")
+    if (
+        "dual_query_answer_candidate_constrained_template_rrf" in selected_methods
+        or "rrf_query_answer_constrained" in selected_methods
+        or any(method_name.startswith("weighted_rrf_query_answer_constrained_w") for method_name in selected_methods)
+    ):
+        needed.add("answer_candidate_constrained_template_only")
+    if "rrf_query_wrong_answer" in selected_methods:
+        needed.add("wrong_answer_only")
+    if "rrf_query_corpus_steered_short" in selected_methods:
+        needed.add("corpus_steered_short_concat")
+    if "safe_rrf_v0" in selected_methods or "safe_rrf_v1" in selected_methods or "fawe_safe_adaptive_beta" in selected_methods:
+        needed.update(
+            {
+                "generative_relevance_feedback_concat",
+                "query2doc_concat",
+                "concat_query_answer_candidate_constrained_template",
+            }
+        )
+    return needed
 
 
 def _load_checkpoint_records(
