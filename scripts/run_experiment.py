@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, Mapping
+from typing import Any, Dict, Iterable, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -33,15 +34,18 @@ from expected_answer_rag.generators import (
     HeuristicGenerator,
     MissingGenerator,
     OpenAITextGenerator,
+    build_counterfactual_prompt_payload,
     entity_only_mask_answer,
+    extract_query_anchors,
     generic_mask_answer,
     length_matched_neutral_filler,
+    parse_counterfactual_prompt_query_expansion,
     parse_answer_candidate_template,
     random_span_mask_answer,
     remove_gold_from_text,
     validate_answer_candidate_template,
 )
-from expected_answer_rag.leakage import leakage_bucket_name, score_generation_methods
+from expected_answer_rag.leakage import extract_concrete_candidates, leakage_bucket_name, normalize_text, score_generation_methods, tokenize
 from expected_answer_rag.metrics import evaluate_run, per_query_metrics
 from expected_answer_rag.qualitative import select_qualitative_examples
 from expected_answer_rag.retrieval import RankedList, make_retriever
@@ -55,7 +59,59 @@ FROZEN_PRIMARY_COMPARISONS = [
     ("hyde_doc_only", "concat_query_answer_candidate_constrained_template"),
     ("query2doc_concat", "concat_query_answer_candidate_constrained_template"),
     ("concat_query_raw_expected", "corpus_steered_expansion_concat"),
+    ("safe_rrf_v0", "query2doc_concat"),
+    ("safe_rrf_v1", "safe_rrf_v0"),
+    ("cf_prompt_query_expansion_rrf", "concat_query_answer_candidate_constrained_template"),
 ]
+
+SAFE_RRF_V0_WEIGHTS = {
+    "query_only": 1.0,
+    "generative_relevance_feedback_concat": 0.8,
+    "query2doc_concat": 0.55,
+    "concat_query_answer_candidate_constrained_template": 0.55,
+}
+
+ROUTE_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "by",
+    "for",
+    "from",
+    "in",
+    "into",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "to",
+    "was",
+    "were",
+    "with",
+}
+
+CF_PROMPT_BASE_WEIGHTS = {
+    "relation": 0.55,
+    "evidence": 0.45,
+    "answer_slot": 0.35,
+    "bridge": 0.5,
+    "generic": 0.3,
+}
+
+CF_PROMPT_GENERIC_PATTERNS = (
+    "information about",
+    "documents about",
+    "what does",
+    "guidance on",
+    "example disclosures",
+    "illustrative notes",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -92,6 +148,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-reasoning", action="store_true")
     parser.add_argument("--reasoning-effort", default=None)
     parser.add_argument("--generation-cache", default="outputs/generation_cache.json")
+    parser.add_argument("--generation-workers", type=int, default=1, help="Threads for precomputing generations across queries.")
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument(
         "--answer-rrf-weights",
@@ -111,6 +168,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    print(
+        f"Phase 0/4: Loading dataset {args.dataset} "
+        f"(max_queries={args.max_queries}, max_corpus={args.max_corpus})"
+    )
     dataset = load_dataset(
         args.dataset,
         max_corpus=args.max_corpus,
@@ -119,17 +180,26 @@ def main() -> None:
         query_metadata_path=args.query_metadata,
     )
     if args.counterfactual != "none":
+        print(
+            f"Phase 0.5/4: Building counterfactual dataset "
+            f"(regime={args.counterfactual}, alias_style={args.counterfactual_alias_style})"
+        )
         counterfactual = build_entity_counterfactual_dataset(
             dataset,
             alias_style=args.counterfactual_alias_style,
             include_values=args.counterfactual == "entity_and_value",
             seed=args.counterfactual_seed,
+            progress=print,
         )
         dataset = counterfactual.dataset
         if args.counterfactual_export_dir:
             export_local_dataset(dataset, _resolve_path(args.counterfactual_export_dir))
             export_counterfactual_artifacts(counterfactual, _resolve_path(args.counterfactual_export_dir))
         counterfactual_validation = counterfactual.validation
+        print(
+            f"Phase 0.5/4 complete: Counterfactual corpus={len(dataset.corpus)}, "
+            f"queries={len(dataset.queries)}, qrels_queries={len(dataset.qrels)}"
+        )
     else:
         counterfactual_validation = None
 
@@ -160,6 +230,44 @@ def main() -> None:
     answer_rrf_weights = _parse_float_list(args.answer_rrf_weights)
     runs = _initialize_runs(answer_rrf_weights)
     doc_map = {doc.doc_id: doc for doc in dataset.corpus}
+    cache_namespace = generator.namespace
+    cache_namespace_aliases = _legacy_cache_namespaces(args)
+    query_contexts = {}
+    print(
+        f"Phase 1/4: First-pass retrieval over {len(dataset.queries)} queries "
+        f"(retriever={args.retriever}, top_k={args.top_k})"
+    )
+    for query in tqdm(dataset.queries, desc="First-pass retrieval"):
+        query_rank = retriever.search(query.text, top_k=args.top_k)
+        query_contexts[query.query_id] = {
+            "query_rank": query_rank,
+            "cf_prompt_support": _build_cf_prompt_support_context(query.text, query_rank, doc_map),
+            "corpus_steered_text": _build_corpus_steered_expansion(query.text, query_rank, doc_map),
+            "corpus_steered_short_text": _build_corpus_steered_expansion(
+                query.text,
+                query_rank,
+                doc_map,
+                max_docs=2,
+                max_words=40,
+            ),
+        }
+    print(
+        f"Phase 2/4: Precomputing generations for {len(dataset.queries)} queries "
+        f"(workers={args.generation_workers}, generator={args.generator}, model={args.model})"
+    )
+    generation_bundles = _precompute_generation_bundles(
+        args=args,
+        dataset_name=dataset.name,
+        queries=dataset.queries,
+        cache=generator.cache,
+        cache_namespace=cache_namespace,
+        cache_namespace_aliases=cache_namespace_aliases,
+        support_contexts={
+            query_id: str(bundle["cf_prompt_support"]["prompt_context"])
+            for query_id, bundle in query_contexts.items()
+        },
+    )
+    print(f"Phase 3/4: Running retrieval fusion and evaluation over {len(dataset.queries)} queries")
     features_by_query: dict[str, dict[str, object]] = {}
     generations = {}
     records = []
@@ -167,22 +275,35 @@ def main() -> None:
     per_query_method_metrics: dict[str, dict[str, dict[str, float]]] = {name: {} for name in runs}
 
     for index, query in enumerate(tqdm(dataset.queries, desc="Running queries")):
+        query_context = query_contexts[query.query_id]
+        generation_bundle = generation_bundles[query.query_id]
         relevant_docs = [doc_map[doc_id] for doc_id in dataset.qrels.get(query.query_id, {}) if doc_id in doc_map]
-        expected = generator.expected_answer(query.text)
-        expected_artifact = generator.last_artifact()
-        masked = generator.mask_answer(query.text, expected)
-        masked_artifact = generator.last_artifact()
-        hyde_doc = generator.hyde_document(query.text)
-        hyde_artifact = generator.last_artifact()
-        query2doc_doc = generator.query2doc_document(query.text)
-        query2doc_artifact = generator.last_artifact()
-        relevance_feedback = generator.relevance_feedback(query.text)
-        feedback_artifact = generator.last_artifact()
-        template_text = generator.answer_candidate_template(query.text)
-        template_artifact = generator.last_artifact()
+        query_rank = query_context["query_rank"]
+        cf_prompt_support = query_context["cf_prompt_support"]
+        expected = str(generation_bundle["expected_answer"])
+        expected_artifact = generation_bundle["expected_answer_artifact"]
+        masked = str(generation_bundle["masked_expected_answer"])
+        masked_artifact = generation_bundle["masked_expected_answer_artifact"]
+        hyde_doc = str(generation_bundle["hyde_document"])
+        hyde_artifact = generation_bundle["hyde_document_artifact"]
+        query2doc_doc = str(generation_bundle["query2doc_document"])
+        query2doc_artifact = generation_bundle["query2doc_document_artifact"]
+        relevance_feedback = str(generation_bundle["generative_relevance_feedback"])
+        feedback_artifact = generation_bundle["generative_relevance_feedback_artifact"]
+        template_text = str(generation_bundle["answer_candidate_template"])
+        template_artifact = generation_bundle["answer_candidate_template_artifact"]
         template_payload = parse_answer_candidate_template(template_text, query.text)
         template_validation = validate_answer_candidate_template(query.text, template_payload)
         template_retrieval_text = str(template_payload.get("retrieval_text") or query.text)
+        cf_prompt_text = str(generation_bundle["cf_prompt_query_expansion"])
+        cf_prompt_artifact = generation_bundle["cf_prompt_query_expansion_artifact"]
+        cf_prompt_payload = parse_counterfactual_prompt_query_expansion(
+            cf_prompt_text,
+            query.text,
+            build_counterfactual_prompt_payload(query.text),
+        )
+        cf_prompt_queries = list(cf_prompt_payload.get("queries") or [])
+        cf_prompt_joined = "\n".join(cf_prompt_queries).strip()
 
         oracle_masked = remove_gold_from_text(expected, list(query.all_answer_strings))
         posthoc_gold_removed = remove_gold_from_text(expected, list(query.all_answer_strings))
@@ -194,15 +315,20 @@ def main() -> None:
         wrong_answer_only = wrong_answer_candidate
         wrong_answer_injection = f"{query.text}\n{wrong_answer_candidate}".strip()
 
-        query_rank = retriever.search(query.text, top_k=args.top_k)
-        corpus_steered_text = _build_corpus_steered_expansion(query.text, query_rank, doc_map)
-        corpus_steered_short_text = _build_corpus_steered_expansion(
-            query.text,
-            query_rank,
-            doc_map,
-            max_docs=2,
-            max_words=40,
+        cf_prompt_bundle = _cf_prompt_subquery_bundle(
+            query_text=query.text,
+            query_rank=query_rank,
+            cf_prompt_payload=cf_prompt_payload,
+            retriever=retriever,
+            doc_map=doc_map,
+            top_k=args.top_k,
+            support_terms=cf_prompt_support["support_terms"],
         )
+        cf_prompt_selected_queries = list(cf_prompt_bundle["selected_queries"])
+        cf_prompt_selected_weights = list(cf_prompt_bundle["selected_weights"])
+        cf_prompt_selected_joined = "\n".join(cf_prompt_selected_queries).strip()
+        corpus_steered_text = str(query_context["corpus_steered_text"])
+        corpus_steered_short_text = str(query_context["corpus_steered_short_text"])
 
         method_queries = {
             "hyde_doc_only": hyde_doc,
@@ -239,6 +365,11 @@ def main() -> None:
             if method_name == "query_only":
                 continue
             rankings[method_name] = retriever.search(method_query, top_k=args.top_k)
+        rankings["cf_prompt_query_expansion_rrf"] = weighted_reciprocal_rank_fusion(
+            [query_rank, *cf_prompt_bundle["rankings"]] if cf_prompt_bundle["rankings"] else [query_rank],
+            [1.0, *cf_prompt_selected_weights] if cf_prompt_bundle["rankings"] else [1.0],
+            top_k=args.top_k,
+        )
 
         rankings["dual_query_raw_expected_rrf"] = reciprocal_rank_fusion([query_rank, rankings["raw_expected_answer_only"]], top_k=args.top_k)
         rankings["dual_query_masked_expected_rrf"] = reciprocal_rank_fusion([query_rank, rankings["masked_expected_answer_only"]], top_k=args.top_k)
@@ -254,6 +385,21 @@ def main() -> None:
         )
         rankings["rrf_query_corpus_steered_short"] = reciprocal_rank_fusion(
             [query_rank, rankings["corpus_steered_short_concat"]],
+            top_k=args.top_k,
+        )
+        rankings["safe_rrf_v0"] = weighted_reciprocal_rank_fusion(
+            [
+                query_rank,
+                rankings["generative_relevance_feedback_concat"],
+                rankings["query2doc_concat"],
+                rankings["concat_query_answer_candidate_constrained_template"],
+            ],
+            [
+                SAFE_RRF_V0_WEIGHTS["query_only"],
+                SAFE_RRF_V0_WEIGHTS["generative_relevance_feedback_concat"],
+                SAFE_RRF_V0_WEIGHTS["query2doc_concat"],
+                SAFE_RRF_V0_WEIGHTS["concat_query_answer_candidate_constrained_template"],
+            ],
             top_k=args.top_k,
         )
         for weight in answer_rrf_weights:
@@ -309,6 +455,7 @@ def main() -> None:
             "wrong_answer_only": wrong_answer_only,
             "concat_query_wrong_answer": wrong_answer_injection,
             "wrong_answer_injection": wrong_answer_injection,
+            "cf_prompt_query_expansion_rrf": cf_prompt_selected_joined or cf_prompt_joined,
         }
         leakage_scores = score_generation_methods(query, generated_texts_for_leakage, relevant_docs)
         leakage_labels = {
@@ -329,11 +476,52 @@ def main() -> None:
             "leakage_bucket": bucket,
             "raw_expected_answer_only": leakage_scores["raw_expected_answer_only"],
         }
+        route_reliability = _route_reliability_bundle(
+            query_text=query.text,
+            query_rank=query_rank,
+            route_texts={
+                "generative_relevance_feedback_concat": relevance_feedback,
+                "query2doc_concat": query2doc_doc,
+                "concat_query_answer_candidate_constrained_template": template_retrieval_text,
+            },
+            route_rankings={
+                "generative_relevance_feedback_concat": rankings["generative_relevance_feedback_concat"],
+                "query2doc_concat": rankings["query2doc_concat"],
+                "concat_query_answer_candidate_constrained_template": rankings["concat_query_answer_candidate_constrained_template"],
+            },
+            doc_map=doc_map,
+            template_validation=template_validation,
+        )
+        safe_rrf_v1_weights = route_reliability["weights"]
+        rankings["safe_rrf_v1"] = weighted_reciprocal_rank_fusion(
+            [
+                query_rank,
+                rankings["generative_relevance_feedback_concat"],
+                rankings["query2doc_concat"],
+                rankings["concat_query_answer_candidate_constrained_template"],
+            ],
+            [
+                safe_rrf_v1_weights["query_only"],
+                safe_rrf_v1_weights["generative_relevance_feedback_concat"],
+                safe_rrf_v1_weights["query2doc_concat"],
+                safe_rrf_v1_weights["concat_query_answer_candidate_constrained_template"],
+            ],
+            top_k=args.top_k,
+        )
+        runs["safe_rrf_v1"][query.query_id] = rankings["safe_rrf_v1"]
+        per_query_method_metrics["safe_rrf_v1"][query.query_id] = per_query_metrics(
+            rankings["safe_rrf_v1"],
+            dataset.qrels.get(query.query_id, {}),
+        )
         retrieval_strings = dict(method_queries)
+        retrieval_strings["cf_prompt_query_expansion_rrf"] = cf_prompt_selected_joined or cf_prompt_joined
         retrieval_specs = _build_retrieval_specs(
             query_text=query.text,
             method_queries=method_queries,
             answer_rrf_weights=answer_rrf_weights,
+            cf_prompt_queries=cf_prompt_queries,
+            safe_rrf_v1_weights=safe_rrf_v1_weights,
+            cf_prompt_bundle=cf_prompt_bundle,
         )
         wrong_answer_verification = {
             "candidate": wrong_answer_candidate,
@@ -356,8 +544,20 @@ def main() -> None:
             "answer_candidate_template": template_text,
             "answer_candidate_template_parsed": template_payload,
             "answer_candidate_template_validation": template_validation,
+            "cf_prompt_query_expansion": cf_prompt_payload,
+            "cf_prompt_query_expansion_selection": {
+                "support_context": cf_prompt_support,
+                "generation_workers": args.generation_workers,
+                "selected_queries": cf_prompt_selected_queries,
+                "selected_weights": cf_prompt_selected_weights,
+                "candidates": cf_prompt_bundle["candidates"],
+            },
             "retrieval_strings": retrieval_strings,
             "retrieval_specs": retrieval_specs,
+            "adaptive_fusion": {
+                "safe_rrf_v0_weights": SAFE_RRF_V0_WEIGHTS,
+                "safe_rrf_v1": route_reliability,
+            },
             "controls": {
                 "oracle_answer_masked": oracle_masked,
                 "post_hoc_gold_removed_expected_answer": posthoc_gold_removed,
@@ -379,6 +579,7 @@ def main() -> None:
                 "query2doc_document": query2doc_artifact,
                 "generative_relevance_feedback": feedback_artifact,
                 "answer_candidate_template": template_artifact,
+                "cf_prompt_query_expansion": cf_prompt_artifact,
             },
             "features": base_features,
             "leakage": leakage_scores,
@@ -420,6 +621,7 @@ def main() -> None:
         "raw_expected_answer_only": select_qualitative_examples(records, "raw_expected_answer_only", limit=args.qualitative_limit),
         "masked_expected_answer_only": select_qualitative_examples(records, "masked_expected_answer_only", limit=args.qualitative_limit),
         "answer_candidate_constrained_template_only": select_qualitative_examples(records, "answer_candidate_constrained_template_only", limit=args.qualitative_limit),
+        "cf_prompt_query_expansion_rrf": select_qualitative_examples(records, "cf_prompt_query_expansion_rrf", limit=args.qualitative_limit),
     }
     result = {
         "dataset": dataset.name,
@@ -523,6 +725,9 @@ def _initialize_runs(answer_rrf_weights: list[float]) -> Dict[str, Dict[str, Ran
         "rrf_query_wrong_answer": {},
         "wrong_answer_injection": {},
         "rrf_query_corpus_steered_short": {},
+        "safe_rrf_v0": {},
+        "safe_rrf_v1": {},
+        "cf_prompt_query_expansion_rrf": {},
     }
     for weight in answer_rrf_weights:
         suffix = _weight_suffix(weight)
@@ -553,6 +758,357 @@ def _build_corpus_steered_expansion(
     return text
 
 
+def _build_cf_prompt_support_context(
+    query_text: str,
+    query_rank: RankedList,
+    doc_map: Mapping[str, Document],
+    max_docs: int = 3,
+    max_terms: int = 8,
+) -> dict[str, object]:
+    snippets: list[str] = []
+    term_counts: dict[str, int] = {}
+    query_tokens = {
+        token
+        for token in tokenize(query_text)
+        if len(token) > 2 and token not in ROUTE_STOPWORDS
+    }
+    query_anchors = {normalize_text(anchor) for anchor in extract_query_anchors(query_text)}
+    for doc_id, _score in query_rank[:max_docs]:
+        doc = doc_map.get(doc_id)
+        if not doc:
+            continue
+        title = doc.title.strip()
+        first_sentence = doc.text.split(".")[0].strip()
+        snippet = " - ".join(part for part in [title, first_sentence] if part).strip()
+        if snippet:
+            snippets.append(snippet)
+        source_text = f"{title} {first_sentence}".strip()
+        for phrase in extract_query_anchors(source_text):
+            normalized = normalize_text(phrase)
+            if not normalized or normalized in query_anchors:
+                continue
+            term_counts[phrase] = term_counts.get(phrase, 0) + 2
+        for token in tokenize(source_text):
+            if len(token) <= 3 or token in ROUTE_STOPWORDS or token in query_tokens:
+                continue
+            term_counts[token] = term_counts.get(token, 0) + 1
+    support_terms = [
+        term
+        for term, _count in sorted(
+            term_counts.items(),
+            key=lambda item: (-item[1], len(item[0]), item[0].lower()),
+        )
+    ][:max_terms]
+    prompt_lines = []
+    if support_terms:
+        prompt_lines.append("support_terms: " + ", ".join(support_terms))
+    if snippets:
+        prompt_lines.append("support_snippets:")
+        prompt_lines.extend(f"- {snippet}" for snippet in snippets[:max_docs])
+    return {
+        "support_terms": support_terms,
+        "support_snippets": snippets[:max_docs],
+        "prompt_context": "\n".join(prompt_lines).strip(),
+    }
+
+
+def _route_reliability_bundle(
+    query_text: str,
+    query_rank: RankedList,
+    route_texts: Mapping[str, str],
+    route_rankings: Mapping[str, RankedList],
+    doc_map: Mapping[str, Document],
+    template_validation: Mapping[str, object],
+) -> dict[str, object]:
+    features = {
+        name: _route_reliability_features(query_text, route_text, query_rank, route_rankings[name], doc_map)
+        for name, route_text in route_texts.items()
+    }
+    weights = _safe_rrf_v1_weights(features, template_validation)
+    return {
+        "features": features,
+        "weights": weights,
+    }
+
+
+def _route_reliability_features(
+    query_text: str,
+    route_text: str,
+    query_rank: RankedList,
+    route_rank: RankedList,
+    doc_map: Mapping[str, Document],
+    top_docs: int = 5,
+) -> dict[str, float | int]:
+    support_docs = [doc_map[doc_id] for doc_id, _score in query_rank[:top_docs] if doc_id in doc_map]
+    support_text = query_text + "\n" + "\n".join(doc.text for doc in support_docs)
+    support_tokens = {token for token in tokenize(support_text) if len(token) > 2 and token not in ROUTE_STOPWORDS}
+    route_tokens = [token for token in tokenize(route_text) if len(token) > 2 and token not in ROUTE_STOPWORDS]
+    token_support = (
+        sum(1 for token in route_tokens if token in support_tokens) / len(route_tokens)
+        if route_tokens
+        else 1.0
+    )
+    support_candidates = {normalize_text(value) for value in extract_concrete_candidates(support_text)}
+    route_candidates = extract_concrete_candidates(route_text)
+    candidate_support = (
+        sum(1 for candidate in route_candidates if normalize_text(candidate) in support_candidates) / len(route_candidates)
+        if route_candidates
+        else 1.0
+    )
+    query_anchor_values = extract_query_anchors(query_text)
+    query_anchor_norms = [normalize_text(anchor) for anchor in query_anchor_values if normalize_text(anchor)]
+    anchor_coverage = (
+        sum(1 for anchor in query_anchor_norms if anchor in normalize_text(route_text)) / len(query_anchor_norms)
+        if query_anchor_norms
+        else 1.0
+    )
+    unsupported_candidates = [
+        candidate
+        for candidate in route_candidates
+        if normalize_text(candidate) not in support_candidates
+        and normalize_text(candidate) not in query_anchor_norms
+    ]
+    route_top = {doc_id for doc_id, _score in route_rank[:10]}
+    query_top = {doc_id for doc_id, _score in query_rank[:20]}
+    route_agreement = len(route_top & query_top) / max(len(route_top), 1)
+    return {
+        "support": round((token_support + candidate_support) / 2.0, 6),
+        "token_support": round(token_support, 6),
+        "candidate_support": round(candidate_support, 6),
+        "unsupported_entity_count": len(unsupported_candidates),
+        "anchor_coverage": round(anchor_coverage, 6),
+        "route_agreement": round(route_agreement, 6),
+        "answer_form_penalty": round(_answer_form_penalty(route_text), 6),
+    }
+
+
+def _safe_rrf_v1_weights(
+    features: Mapping[str, Mapping[str, float | int]],
+    template_validation: Mapping[str, object],
+) -> dict[str, float]:
+    weights = {"query_only": 1.0}
+
+    grf = features["generative_relevance_feedback_concat"]
+    grf_support = float(grf["support"])
+    grf_unsupported = int(grf["unsupported_entity_count"])
+    grf_agreement = float(grf["route_agreement"])
+    grf_penalty = float(grf["answer_form_penalty"])
+    if grf_support >= 0.45 and grf_unsupported <= 1 and grf_agreement >= 0.15 and grf_penalty < 0.7:
+        weights["generative_relevance_feedback_concat"] = 0.8
+    elif grf_support >= 0.25 and grf_unsupported <= 2 and grf_agreement >= 0.05:
+        weights["generative_relevance_feedback_concat"] = 0.5
+    else:
+        weights["generative_relevance_feedback_concat"] = 0.25
+
+    query2doc = features["query2doc_concat"]
+    q2d_support = float(query2doc["support"])
+    q2d_unsupported = int(query2doc["unsupported_entity_count"])
+    q2d_agreement = float(query2doc["route_agreement"])
+    q2d_penalty = float(query2doc["answer_form_penalty"])
+    if q2d_support >= 0.45 and q2d_unsupported <= 1 and q2d_agreement >= 0.10 and q2d_penalty < 0.7:
+        weights["query2doc_concat"] = 0.55
+    elif q2d_support >= 0.25 and q2d_unsupported <= 2:
+        weights["query2doc_concat"] = 0.35
+    else:
+        weights["query2doc_concat"] = 0.2
+
+    answer_constrained = features["concat_query_answer_candidate_constrained_template"]
+    ac_anchor = float(answer_constrained["anchor_coverage"])
+    ac_unsupported = int(answer_constrained["unsupported_entity_count"])
+    if bool(template_validation.get("valid")) and ac_unsupported == 0 and ac_anchor >= 0.75:
+        weights["concat_query_answer_candidate_constrained_template"] = 0.55
+    elif bool(template_validation.get("has_required_keys")) and ac_unsupported <= 1 and ac_anchor >= 0.5:
+        weights["concat_query_answer_candidate_constrained_template"] = 0.4
+    else:
+        weights["concat_query_answer_candidate_constrained_template"] = 0.25
+
+    return weights
+
+
+def _cf_prompt_subquery_bundle(
+    query_text: str,
+    query_rank: RankedList,
+    cf_prompt_payload: Mapping[str, object],
+    retriever,
+    doc_map: Mapping[str, Document],
+    top_k: int,
+    support_terms: list[str],
+    max_selected: int = 3,
+) -> dict[str, Any]:
+    candidates: list[dict[str, Any]] = []
+    role_map = []
+    role_map.extend(("relation", query) for query in cf_prompt_payload.get("relation_queries") or [])
+    role_map.extend(("evidence", query) for query in cf_prompt_payload.get("evidence_queries") or [])
+    role_map.append(("answer_slot", str(cf_prompt_payload.get("answer_slot_query") or "").strip()))
+    role_map.append(("bridge", str(cf_prompt_payload.get("bridge_query") or "").strip()))
+    for role, candidate_query in role_map:
+        candidate_text = str(candidate_query or "").strip()
+        if not candidate_text:
+            continue
+        ranking = retriever.search(candidate_text, top_k=top_k)
+        features = _route_reliability_features(query_text, candidate_text, query_rank, ranking, doc_map)
+        weight, keep, reasons = _cf_prompt_subquery_weight(
+            role,
+            candidate_text,
+            query_text,
+            features,
+            support_terms=support_terms,
+        )
+        candidates.append(
+            {
+                "role": role,
+                "query": candidate_text,
+                "features": features,
+                "contains_support_term": _contains_support_term(candidate_text, support_terms),
+                "weight": round(weight, 6),
+                "selected": keep,
+                "selection_reasons": reasons,
+                "ranking": ranking,
+            }
+        )
+    selected = [candidate for candidate in candidates if candidate["selected"] and candidate["weight"] > 0]
+    deduped: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    role_caps = {"relation": 2, "evidence": 1, "bridge": 1, "answer_slot": 1}
+    role_counts: dict[str, int] = {}
+    selected.sort(
+        key=lambda item: (
+            -float(item["weight"]),
+            -int(bool(item["contains_support_term"])),
+            -float(item["features"]["route_agreement"]),
+            item["query"],
+        )
+    )
+    for candidate in selected:
+        key = _cf_query_shape_key(candidate["query"])
+        if key in seen_keys:
+            continue
+        role = str(candidate["role"])
+        if role_counts.get(role, 0) >= role_caps.get(role, 1):
+            continue
+        role_counts[role] = role_counts.get(role, 0) + 1
+        seen_keys.add(key)
+        deduped.append(candidate)
+    selected = deduped
+    if not selected and candidates:
+        fallback = max(
+            candidates,
+            key=lambda item: (
+                int(bool(item["contains_support_term"])),
+                float(item["weight"]),
+                float(item["features"]["support"]),
+                float(item["features"]["route_agreement"]),
+            ),
+        )
+        fallback = dict(fallback)
+        fallback["selected"] = True
+        fallback["selection_reasons"] = list(fallback["selection_reasons"]) + ["fallback_best_candidate"]
+        selected = [fallback]
+    selected = selected[:max_selected]
+    rankings = [candidate["ranking"] for candidate in selected]
+    weights = [float(candidate["weight"]) for candidate in selected]
+    return {
+        "candidates": [
+            {
+                key: value
+                for key, value in candidate.items()
+                if key != "ranking"
+            }
+            for candidate in candidates
+        ],
+        "selected_queries": [candidate["query"] for candidate in selected],
+        "selected_roles": [candidate["role"] for candidate in selected],
+        "selected_weights": weights,
+        "rankings": rankings,
+    }
+
+
+def _cf_prompt_subquery_weight(
+    role: str,
+    candidate_query: str,
+    query_text: str,
+    features: Mapping[str, float | int],
+    support_terms: list[str],
+) -> tuple[float, bool, list[str]]:
+    reasons: list[str] = []
+    if _normalize_text(candidate_query) == _normalize_text(query_text):
+        return 0.0, False, ["duplicate_query_only"]
+    base = CF_PROMPT_BASE_WEIGHTS.get(role, CF_PROMPT_BASE_WEIGHTS["generic"])
+    support = float(features["support"])
+    anchor_coverage = float(features["anchor_coverage"])
+    agreement = float(features["route_agreement"])
+    unsupported = int(features["unsupported_entity_count"])
+    answer_penalty = float(features["answer_form_penalty"])
+    has_support_term = _contains_support_term(candidate_query, support_terms)
+    generic_penalty = _cf_prompt_generic_penalty(candidate_query)
+    weight = base
+    if unsupported > 1:
+        return 0.0, False, ["unsupported_candidates"]
+    if anchor_coverage < 0.34:
+        return 0.0, False, ["anchor_dropout"]
+    if answer_penalty >= 0.8:
+        return 0.0, False, ["answer_form_penalty"]
+    if support_terms and role != "answer_slot" and not has_support_term:
+        weight -= 0.2
+        reasons.append("missing_support_term")
+    if generic_penalty:
+        weight -= generic_penalty
+        reasons.append("generic_phrase_penalty")
+    if support >= 0.45:
+        weight += 0.1
+        reasons.append("supported_by_query_or_docs")
+    elif support < 0.2:
+        weight -= 0.1
+        reasons.append("low_support")
+    if agreement >= 0.15:
+        weight += 0.1
+        reasons.append("agrees_with_query_only")
+    elif agreement < 0.05:
+        weight -= 0.05
+        reasons.append("low_route_agreement")
+    if anchor_coverage >= 0.75:
+        weight += 0.05
+        reasons.append("strong_anchor_preservation")
+    if unsupported == 0:
+        weight += 0.05
+        reasons.append("no_unsupported_candidates")
+    keep = weight >= 0.2 and (has_support_term or role == "answer_slot" or not support_terms)
+    if not keep and not reasons:
+        reasons.append("weight_below_threshold")
+    return max(round(weight, 6), 0.0), keep, reasons
+
+
+def _contains_support_term(text: str, support_terms: list[str]) -> bool:
+    normalized_text = _normalize_text(text)
+    return any(_normalize_text(term) and _normalize_text(term) in normalized_text for term in support_terms)
+
+
+def _cf_prompt_generic_penalty(text: str) -> float:
+    lowered = _normalize_text(text)
+    for pattern in CF_PROMPT_GENERIC_PATTERNS:
+        if pattern in lowered:
+            return 0.15
+    return 0.0
+
+
+def _cf_query_shape_key(text: str) -> str:
+    tokens = [token for token in tokenize(text) if token not in ROUTE_STOPWORDS]
+    return " ".join(sorted(dict.fromkeys(tokens)))
+
+
+def _answer_form_penalty(text: str) -> float:
+    lowered = text.strip().lower()
+    candidates = extract_concrete_candidates(text)
+    token_count = len(tokenize(text))
+    if lowered.startswith("the answer is"):
+        return 1.0
+    if token_count <= 6 and candidates:
+        return 0.8
+    if candidates and token_count <= 12:
+        return 0.6
+    return 0.0
+
+
 def _wrong_answer_candidate(dataset, index: int) -> str:
     other_answers = []
     for offset in range(1, len(dataset.queries)):
@@ -561,6 +1117,101 @@ def _wrong_answer_candidate(dataset, index: int) -> str:
             other_answers = list(other.answers)
             break
     return other_answers[0] if other_answers else "Wrong Candidate"
+
+
+def _precompute_generation_bundles(
+    args: argparse.Namespace,
+    dataset_name: str,
+    queries,
+    cache: JsonCache,
+    cache_namespace: str,
+    cache_namespace_aliases: list[str],
+    support_contexts: Mapping[str, str],
+) -> dict[str, dict[str, object]]:
+    max_workers = max(int(args.generation_workers or 1), 1)
+    if max_workers == 1:
+        return {
+            query.query_id: _generate_query_bundle(
+                args=args,
+                dataset_name=dataset_name,
+                query_text=query.text,
+                support_context=str(support_contexts.get(query.query_id, "")),
+                cache=cache,
+                cache_namespace=cache_namespace,
+                cache_namespace_aliases=cache_namespace_aliases,
+            )
+            for query in tqdm(queries, desc="Precomputing generations")
+        }
+    results: dict[str, dict[str, object]] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(
+                _generate_query_bundle,
+                args,
+                dataset_name,
+                query.text,
+                str(support_contexts.get(query.query_id, "")),
+                cache,
+                cache_namespace,
+                cache_namespace_aliases,
+            ): query.query_id
+            for query in queries
+        }
+        for future in tqdm(
+            concurrent.futures.as_completed(future_map),
+            total=len(future_map),
+            desc="Precomputing generations",
+        ):
+            query_id = future_map[future]
+            results[query_id] = future.result()
+    return results
+
+
+def _generate_query_bundle(
+    args: argparse.Namespace,
+    dataset_name: str,
+    query_text: str,
+    support_context: str,
+    cache: JsonCache,
+    cache_namespace: str,
+    cache_namespace_aliases: list[str],
+) -> dict[str, object]:
+    local_generator = CachedTextGenerator(
+        inner=_make_base_generator(args),
+        cache=cache,
+        namespace=cache_namespace,
+        namespace_aliases=cache_namespace_aliases,
+    )
+    expected = local_generator.expected_answer(query_text)
+    expected_artifact = dict(local_generator.last_artifact() or {})
+    masked = local_generator.mask_answer(query_text, expected)
+    masked_artifact = dict(local_generator.last_artifact() or {})
+    hyde_doc = local_generator.hyde_document(query_text)
+    hyde_artifact = dict(local_generator.last_artifact() or {})
+    query2doc_doc = local_generator.query2doc_document(query_text)
+    query2doc_artifact = dict(local_generator.last_artifact() or {})
+    relevance_feedback = local_generator.relevance_feedback(query_text)
+    feedback_artifact = dict(local_generator.last_artifact() or {})
+    template_text = local_generator.answer_candidate_template(query_text)
+    template_artifact = dict(local_generator.last_artifact() or {})
+    cf_prompt_text = local_generator.counterfactual_prompt_query_expansion(query_text, support_context)
+    cf_prompt_artifact = dict(local_generator.last_artifact() or {})
+    return {
+        "expected_answer": expected,
+        "expected_answer_artifact": expected_artifact,
+        "masked_expected_answer": masked,
+        "masked_expected_answer_artifact": masked_artifact,
+        "hyde_document": hyde_doc,
+        "hyde_document_artifact": hyde_artifact,
+        "query2doc_document": query2doc_doc,
+        "query2doc_document_artifact": query2doc_artifact,
+        "generative_relevance_feedback": relevance_feedback,
+        "generative_relevance_feedback_artifact": feedback_artifact,
+        "answer_candidate_template": template_text,
+        "answer_candidate_template_artifact": template_artifact,
+        "cf_prompt_query_expansion": cf_prompt_text,
+        "cf_prompt_query_expansion_artifact": cf_prompt_artifact,
+    }
 
 
 def _compute_primary_comparisons(
@@ -634,6 +1285,9 @@ def _build_retrieval_specs(
     query_text: str,
     method_queries: Mapping[str, str],
     answer_rrf_weights: list[float],
+    cf_prompt_queries: list[str],
+    safe_rrf_v1_weights: Mapping[str, float],
+    cf_prompt_bundle: Mapping[str, object],
 ) -> dict[str, object]:
     specs: dict[str, object] = {
         method_name: {"mode": "single_query", "query_text": method_query}
@@ -666,6 +1320,39 @@ def _build_retrieval_specs(
     specs["rrf_query_corpus_steered_short"] = {
         "mode": "rrf",
         "routes": {"query_only": query_text, "corpus_steered_short_concat": method_queries["corpus_steered_short_concat"]},
+    }
+    specs["safe_rrf_v0"] = {
+        "mode": "weighted_rrf",
+        "weights": dict(SAFE_RRF_V0_WEIGHTS),
+        "routes": {
+            "query_only": query_text,
+            "generative_relevance_feedback_concat": method_queries["generative_relevance_feedback_concat"],
+            "query2doc_concat": method_queries["query2doc_concat"],
+            "concat_query_answer_candidate_constrained_template": method_queries["concat_query_answer_candidate_constrained_template"],
+        },
+    }
+    specs["safe_rrf_v1"] = {
+        "mode": "adaptive_weighted_rrf",
+        "weights": dict(safe_rrf_v1_weights),
+        "routes": {
+            "query_only": query_text,
+            "generative_relevance_feedback_concat": method_queries["generative_relevance_feedback_concat"],
+            "query2doc_concat": method_queries["query2doc_concat"],
+            "concat_query_answer_candidate_constrained_template": method_queries["concat_query_answer_candidate_constrained_template"],
+        },
+    }
+    specs["cf_prompt_query_expansion_rrf"] = {
+        "mode": "adaptive_weighted_rrf",
+        "weights": {
+            "query_only": 1.0,
+            "cf_prompt_queries": list(cf_prompt_bundle.get("selected_weights") or []),
+        },
+        "routes": {
+            "query_only": query_text,
+            "cf_prompt_queries": cf_prompt_queries,
+            "selected_cf_prompt_queries": list(cf_prompt_bundle.get("selected_queries") or []),
+            "selected_cf_prompt_roles": list(cf_prompt_bundle.get("selected_roles") or []),
+        },
     }
     for weight in answer_rrf_weights:
         suffix = _weight_suffix(weight)

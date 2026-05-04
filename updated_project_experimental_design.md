@@ -486,13 +486,22 @@ Reduce the main table to methods that answer the scientific question. Move some 
 6. `hyde_doc_only`
 7. `query2doc_concat`
 8. `generative_relevance_feedback`
-9. `corpus_steered_short_concat`
-10. `RRF(query, corpus_steered)`
-11. `concat_query_masked_expected`
-12. `RRF(query, masked_expected)`
-13. `concat_query_answer_constrained`
-14. `RRF(query, answer_constrained)`
-15. `weighted_RRF(query, answer_constrained)`
+9. `concat_query_answer_constrained`
+10. `RRF(query, answer_constrained)`
+11. `weighted_RRF(query, answer_constrained)`
+12. `safe_rrf_v0`
+13. `safe_rrf_v1`
+14. `cf_prompt_query_expansion_rrf`
+15. `corpus_steered_short_concat`
+16. `RRF(query, corpus_steered)`
+17. `concat_query_masked_expected`
+18. `RRF(query, masked_expected)`
+
+Method notes for the new additions:
+
+- `safe_rrf_v0`: fixed weighted RRF over `query_only`, `generative_relevance_feedback`, `query2doc_concat`, and `concat_query_answer_constrained`.
+- `safe_rrf_v1`: the same fusion routes, but with per-query gating from source support, unsupported candidate count, anchor preservation, retrieval agreement with `query_only`, and answer-form penalties.
+- `cf_prompt_query_expansion_rrf`: counterfactual-prompted multi-query expansion, where public entity triggers are obfuscated during generation and restored before retrieval.
 
 #### Appendix / control methods
 
@@ -581,8 +590,10 @@ Primary contrasts:
 2. `hyde_doc_only` vs `query_only` in public and CF.
 3. `query2doc_concat` vs `concat_query_answer_constrained`.
 4. `generative_relevance_feedback` vs `concat_query_answer_constrained`.
-5. `RRF(query, answer_constrained)` vs `query_only`.
-6. Excess instability of raw/HyDE versus constrained/fusion methods.
+5. `safe_rrf_v0` vs `query2doc_concat`.
+6. `safe_rrf_v1` vs `safe_rrf_v0`.
+7. `cf_prompt_query_expansion_rrf` vs `concat_query_answer_constrained`.
+8. Excess instability of raw/HyDE versus constrained/fusion methods.
 
 ---
 
@@ -637,8 +648,10 @@ A reviewer-safe final claim would be:
 - [ ] Promote GRF to main baseline.
 - [ ] Keep Query2doc as a central baseline.
 - [ ] Move mask-only and generic mask to appendix controls.
-- [ ] Add `concat_query_masked_expected` and `RRF(query, masked_expected)` if not already in the current result set.
-- [ ] Add `RRF(query, answer_constrained)` and weighted RRF.
+- [x] Add `concat_query_masked_expected` and `RRF(query, masked_expected)`.
+- [x] Add `RRF(query, answer_constrained)` and weighted RRF.
+- [x] Add `safe_rrf_v0`, `safe_rrf_v1`, and `cf_prompt_query_expansion_rrf`.
+- [ ] Run the new fusion and counterfactual-prompted methods across the public, entity-counterfactual, and entity+value-counterfactual matrix.
 - [ ] Add shorter and RRF versions of corpus-steered expansion.
 - [ ] Add BM25+RM3.
 
@@ -682,11 +695,57 @@ The new minimum package for a strong submission is:
 3. At least one realistic alias mode and one coded-alias ablation.
 4. BM25, BM25+RM3, one dense retriever, and ideally one hybrid RRF retriever.
 5. Main baselines: query-only, HyDE, Query2doc, GRF, CSQE-style corpus-steered expansion.
-6. Main interventions: query-preserving masked expansion and answer-candidate-constrained fusion.
+6. Main interventions: answer-candidate-constrained reformulation, SAFE-RRF adaptive fusion, and counterfactual-prompted expansion.
 7. Leakage metrics before retrieval metrics.
 8. Excess instability over query-only as a headline metric.
 9. Paired confidence intervals and primary statistical tests.
 10. Qualitative examples and human spot checks.
+
+### 11.1 Immediate run commands for the newly added methods
+
+No method-specific CLI flag is required because the runner computes the full method set in every run, including `safe_rrf_v0`, `safe_rrf_v1`, and `cf_prompt_query_expansion_rrf`.
+
+Public BM25 example:
+
+```bash
+conda run -n rag python scripts/run_experiment.py \
+  --dataset nq \
+  --max-queries 100 \
+  --max-corpus 200 \
+  --cache-dir outputs/hf_cache \
+  --generator openrouter \
+  --model openai/gpt-5-mini \
+  --token-param none \
+  --generation-cache outputs/nq_100_cache.json \
+  --retriever bm25 \
+  --output outputs/nq_100_run.json \
+  --records-output outputs/nq_100_records.jsonl
+```
+
+Entity-counterfactual BM25 example:
+
+```bash
+conda run -n rag python scripts/run_experiment.py \
+  --dataset nq \
+  --max-queries 100 \
+  --max-corpus 200 \
+  --cache-dir outputs/hf_cache \
+  --counterfactual entity \
+  --counterfactual-alias-style natural \
+  --generator openrouter \
+  --model openai/gpt-5-mini \
+  --token-param none \
+  --generation-cache outputs/nq_100_cf_cache.json \
+  --retriever bm25 \
+  --output outputs/nq_100_cf_run.json \
+  --records-output outputs/nq_100_cf_records.jsonl
+```
+
+Full pilot matrix:
+
+```bash
+bash run_all.sh
+```
 
 If full-corpus generation is infeasible, the paper can still be viable with large fixed hard-negative pools, but the pool construction must be rigorous and fully reported.
 

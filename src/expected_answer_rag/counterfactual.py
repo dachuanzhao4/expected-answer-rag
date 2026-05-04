@@ -5,18 +5,20 @@ import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Callable, Iterable, Mapping
 
 from expected_answer_rag.datasets import Document, Query, RetrievalDataset
-from expected_answer_rag.leakage import CAPITALIZED_RE, QUOTED_TITLE_RE, normalize_text
+from expected_answer_rag.leakage import QUOTED_TITLE_RE, normalize_text
 import spacy
 
 _nlp = None
+ProgressCallback = Callable[[str], None]
+
 
 def get_nlp():
     global _nlp
     if _nlp is None:
-        _nlp = spacy.load("en_core_web_sm")
+        _nlp = spacy.load("en_core_web_sm", disable=["tagger", "parser", "lemmatizer", "attribute_ruler"])
     return _nlp
 
 
@@ -63,12 +65,18 @@ def build_entity_counterfactual_dataset(
     alias_style: str = "natural",
     include_values: bool = False,
     seed: int = 13,
+    progress: ProgressCallback | None = None,
 ) -> CounterfactualBuildResult:
     rng = random.Random(seed)
+    _progress(progress, "  - Collecting renamable spans")
     spans = collect_renamable_spans(dataset, include_values=include_values)
+    _progress(progress, f"  - Collected {len(spans)} spans; building alias table")
     alias_table = build_alias_table(spans, alias_style=alias_style, rng=rng)
-    renamed_corpus = [_rename_document(doc, alias_table) for doc in dataset.corpus]
-    renamed_queries = [_rename_query(query, alias_table) for query in dataset.queries]
+    compiled_aliases = compile_alias_table(alias_table)
+    _progress(progress, f"  - Renaming corpus ({len(dataset.corpus)} documents)")
+    renamed_corpus = [_rename_document(doc, compiled_aliases) for doc in dataset.corpus]
+    _progress(progress, f"  - Renaming queries ({len(dataset.queries)} queries)")
+    renamed_queries = [_rename_query(query, compiled_aliases) for query in dataset.queries]
     variant_name = f"{dataset.name}__entity_counterfactual_{alias_style}"
     if include_values:
         variant_name += "_with_values"
@@ -87,6 +95,7 @@ def build_entity_counterfactual_dataset(
         qrels=dataset.qrels,
         metadata=metadata,
     )
+    _progress(progress, "  - Validating counterfactual dataset")
     validation = validate_counterfactual_dataset(dataset, renamed_dataset, alias_table)
     return CounterfactualBuildResult(dataset=renamed_dataset, alias_table=alias_table, validation=validation)
 
@@ -104,14 +113,22 @@ def export_counterfactual_artifacts(
 
 def collect_renamable_spans(dataset: RetrievalDataset, include_values: bool = False) -> dict[str, str]:
     spans: dict[str, str] = {}
+    nlp = get_nlp()
+    query_texts = [query.text for query in dataset.queries]
+    for text in nlp.pipe(query_texts, batch_size=64):
+        _collect_from_doc(text, spans, include_values)
     for query in dataset.queries:
-        _collect_from_text(query.text, spans, include_values)
         for answer in query.all_answer_strings:
             if include_values or not _looks_like_value(answer):
                 spans.setdefault(answer, infer_entity_type(answer, context=query.text))
+    doc_texts: list[str] = []
     for document in dataset.corpus:
-        _collect_from_text(document.title, spans, include_values)
-        _collect_from_text(document.text, spans, include_values)
+        if document.title:
+            doc_texts.append(document.title)
+        if document.text:
+            doc_texts.append(document.text)
+    for text in nlp.pipe(doc_texts, batch_size=32):
+        _collect_from_doc(text, spans, include_values)
     return spans
 
 
@@ -130,6 +147,15 @@ def build_alias_table(
             "type": entity_type,
         }
     return alias_table
+
+
+def compile_alias_table(alias_table: Mapping[str, Mapping[str, str]]) -> list[tuple[re.Pattern[str], str]]:
+    compiled: list[tuple[re.Pattern[str], str]] = []
+    for source, data in sorted(alias_table.items(), key=lambda item: (-len(item[0]), item[0].lower())):
+        flags = re.IGNORECASE if len(source) >= 4 else 0
+        pattern = re.compile(rf"\b{re.escape(source)}\b", flags)
+        compiled.append((pattern, data["alias"]))
+    return compiled
 
 
 def validate_counterfactual_dataset(
@@ -267,35 +293,36 @@ def _rename_values(values: Iterable[str], alias_table: Mapping[str, Mapping[str,
     return tuple(renamed)
 
 
-def apply_alias_table(text: str, alias_table: Mapping[str, Mapping[str, str]]) -> str:
+def apply_alias_table(
+    text: str,
+    alias_table: Mapping[str, Mapping[str, str]] | list[tuple[re.Pattern[str], str]],
+) -> str:
     updated = text
-    for source, data in sorted(alias_table.items(), key=lambda item: (-len(item[0]), item[0].lower())):
-        alias = data["alias"]
-        flags = re.IGNORECASE if len(source) >= 4 else 0
-        pattern = re.compile(rf"\b{re.escape(source)}\b", flags)
+    if isinstance(alias_table, list):
+        compiled_aliases = alias_table
+    else:
+        compiled_aliases = compile_alias_table(alias_table)
+    for pattern, alias in compiled_aliases:
         updated = pattern.sub(alias, updated)
     return updated
 
 
-def _collect_from_text(text: str, spans: dict[str, str], include_values: bool) -> None:
-    nlp = get_nlp()
-    doc = nlp(text)
-    
+def _collect_from_doc(doc, spans: dict[str, str], include_values: bool) -> None:
     value_labels = {"DATE", "TIME", "PERCENT", "MONEY", "QUANTITY", "ORDINAL", "CARDINAL"}
     entity_labels = {"PERSON", "ORG", "GPE", "LOC", "FAC", "PRODUCT", "EVENT", "WORK_OF_ART"}
-    
+
     for ent in doc.ents:
         if len(ent.text) < 3 and ent.label_ not in value_labels:
             continue
-            
+
         label = ent.label_
-        
+
         if not include_values and label in value_labels:
             continue
-            
+
         if label not in entity_labels and label not in value_labels:
             continue
-            
+
         mapped_type = "ENTITY"
         if label == "PERSON":
             mapped_type = "PERSON"
@@ -309,10 +336,10 @@ def _collect_from_text(text: str, spans: dict[str, str], include_values: bool) -
             mapped_type = "DATE"
         elif label in ("PERCENT", "MONEY", "QUANTITY", "ORDINAL", "CARDINAL"):
             mapped_type = "NUMBER"
-            
+
         spans.setdefault(ent.text, mapped_type)
-        
-    for match in QUOTED_TITLE_RE.findall(text):
+
+    for match in QUOTED_TITLE_RE.findall(doc.text):
         spans.setdefault(match, "TITLE")
 
 
@@ -344,3 +371,8 @@ def _residual_mentions(alias_table: Mapping[str, Mapping[str, str]], text: str) 
         if normalized_source and normalized_source in normalized_text:
             residue.append(source)
     return residue
+
+
+def _progress(progress: ProgressCallback | None, message: str) -> None:
+    if progress is not None:
+        progress(message)

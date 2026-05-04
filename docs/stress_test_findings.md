@@ -1,293 +1,435 @@
-# Initial Stress Test Findings & Project Status
+# Stress Test Findings and Current Status
 
-This document summarizes the current pilot stress tests, following earlier N=5 dry-run validation, and tracks experimental progress against the `updated_project_experimental_design.md` memo.
+This document aggregates the latest `run_all.sh` matrix produced with:
 
-## 1. Key Findings from Stress Tests
+- `N=20`
+- `MAX_CORPUS=1000`
+- `RUN_TAG=cap1000`
 
-### Summary of Performance (BM25 nDCG@10, `--max-queries 100`, `--max-corpus 200`)
+It covers `NQ`, `SciFact`, and `HotpotQA`, each under:
 
-| Method | NQ | SciFact | HotpotQA | NQ (CF) | SciFact (CF) | HotpotQA (CF) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `query_only` | 0.699 | 1.000 | 0.897 | 0.639 | 0.944 | 0.646 |
-| `raw_expected_answer_only` | 0.889 | 1.000 | 0.842 | 0.562 | 0.889 | 0.320 |
-| `hyde_doc_only` | 0.918 | 0.959 | 1.000 | 0.630 | 0.959 | 0.539 |
-| `query2doc_concat` | 0.910 | 0.924 | 0.975 | 0.739 | 0.932 | 0.619 |
-| `generative_relevance_feedback_concat` | 0.903 | 0.959 | 0.975 | 0.407 | 0.865 | 0.408 |
-| `corpus_steered_expansion_concat` | 0.651 | 0.836 | 0.697 | 0.612 | 0.780 | 0.523 |
-| `corpus_steered_short_concat` | 0.668 | 0.918 | 0.826 | 0.674 | 0.780 | 0.470 |
-| `masked_expected_answer_only` | 0.687 | 1.000 | 0.651 | 0.490 | 0.881 | 0.226 |
-| `concat_query_masked_expected` | 0.779 | 1.000 | 0.942 | 0.641 | 0.944 | 0.535 |
-| `random_span_masking` | 0.889 | 1.000 | 0.779 | 0.588 | 0.896 | 0.278 |
-| `entity_only_masking` | 0.702 | 1.000 | 0.635 | 0.617 | 0.889 | 0.197 |
-| `generic_mask_slot` | 0.585 | 0.959 | 0.167 | 0.374 | 0.785 | 0.182 |
-| `wrong_answer_only` | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
-| `concat_query_wrong_answer` | 0.698 | 1.000 | 0.897 | 0.636 | 0.944 | 0.646 |
-| `answer_candidate_constrained_template_only` | 0.718 | 1.000 | 0.811 | 0.739 | 0.937 | 0.533 |
-| `concat_query_answer_candidate_constrained_template` | 0.757 | 1.000 | 0.883 | 0.693 | 0.959 | 0.606 |
-| `rrf_query_answer_constrained` | 0.747 | 1.000 | 0.898 | 0.669 | 1.000 | 0.639 |
+- `BM25`
+- dense retrieval
+- `public`
+- `entity-counterfactual`
+- `entity+value-counterfactual`
 
-*Note: these runs targeted `--max-queries 100`, but because `--max-corpus 200` truncates the corpus before qrel filtering, the actual evaluable query counts are much smaller: NQ=`14`, SciFact=`9`, HotpotQA=`15`. These are pilot results, not final experiments.*
+All summary files come from the latest `*_20_cap1000*_run.json` outputs in [outputs](/Users/weiyueli/Desktop/rag/expected-answer-rag/outputs). The corresponding `records.jsonl` files contain `20` per-query records for each `BM25` regime, so this note reflects a genuine `N=20` pilot rather than the earlier `max-corpus=200` truncated setting.
 
-### A. Public-Original Evaluation
-- **First caveat:** these should not be described as true N=100 results. The realized evaluable counts are `14/9/15` queries because the `max-corpus=200` truncation removes many relevant documents before query selection.
-- **NQ:** Public NQ no longer says "raw expected answers are best." `hyde_doc_only` (0.918), `query2doc_concat` (0.910), and `generative_relevance_feedback_concat` (0.903) all outperform `query_only` (0.699), while `raw_expected_answer_only` is still strong (0.889). The updated pattern is that multiple expansion families help on public NQ, not only answer-like generation.
-- **SciFact:** Public SciFact remains heavily saturated. Several methods hit 1.000, so this regime is still not informative enough by itself to separate leakage from genuine reformulation.
-- **HotpotQA:** Public HotpotQA strongly favors pseudo-document style expansion. `hyde_doc_only` reaches 1.000, `query2doc_concat` and `generative_relevance_feedback_concat` reach 0.975, while `raw_expected_answer_only` drops below the baseline (0.842 vs 0.897).
+## 1. Scope and Caveat
 
-### B. Entity-Counterfactual Private-Like Evaluation
-- **NQ remains the clearest leakage case:** `raw_expected_answer_only` drops from 0.889 in Public to 0.562 in CF, moving from well above baseline to below baseline (0.639). That is a much stronger leakage-sensitive pattern than in the earlier draft.
-- **Query-preserving reformulation now looks stronger than GRF:** on NQ CF, `query2doc_concat` and `answer_candidate_constrained_template_only` both reach 0.739, while `generative_relevance_feedback_concat` collapses to 0.407. This reverses the earlier GRF-friendly interpretation.
-- **SciFact CF is more favorable to constrained fusion:** `rrf_query_answer_constrained` reaches 1.000 and `concat_query_answer_candidate_constrained_template` reaches 0.959, while `raw_expected_answer_only` drops to 0.889 from a saturated public 1.000.
-- **HotpotQA CF is harsh:** most expansions fall below the baseline. The best of the listed methods, `rrf_query_answer_constrained`, still lands just under `query_only` (0.639 vs 0.646), so HotpotQA CF remains the most difficult regime.
+This updated pilot is stronger than the earlier `max-corpus=200` stress test, but it is still not a final experiment:
 
-### C. Dense Retriever Stress Testing (nDCG@10, `--max-queries 100`, `--max-corpus 200`)
+- it uses only `20` queries per dataset
+- it still uses a corpus cap of `1000`, not the full benchmark corpus
+- the results are useful for pattern-finding, implementation validation, and method triage, not for final claims
 
-| Method | NQ | SciFact | HotpotQA | NQ (CF) | SciFact (CF) | HotpotQA (CF) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `query_only` | 0.907 | 1.000 | 0.975 | 0.705 | 0.799 | 0.553 |
-| `raw_expected_answer_only` | 0.965 | 1.000 | 0.835 | 0.565 | 0.707 | 0.434 |
-| `hyde_doc_only` | 0.923 | 1.000 | 1.000 | 0.645 | 0.944 | 0.569 |
-| `query2doc_concat` | 0.938 | 1.000 | 1.000 | 0.746 | 0.944 | 0.622 |
-| `generative_relevance_feedback_concat` | 0.941 | 0.937 | 1.000 | 0.704 | 0.776 | 0.604 |
-| `corpus_steered_expansion_concat` | 0.820 | 0.836 | 0.810 | 0.670 | 0.688 | 0.501 |
-| `corpus_steered_short_concat` | 0.907 | 0.918 | 0.951 | 0.710 | 0.710 | 0.535 |
-| `masked_expected_answer_only` | 0.909 | 0.959 | 0.697 | 0.469 | 0.726 | 0.313 |
-| `concat_query_masked_expected` | 0.909 | 1.000 | 1.000 | 0.662 | 0.776 | 0.501 |
-| `random_span_masking` | 0.968 | 1.000 | 0.810 | 0.560 | 0.701 | 0.410 |
-| `entity_only_masking` | 0.729 | 1.000 | 0.666 | 0.524 | 0.726 | 0.328 |
-| `generic_mask_slot` | 0.587 | 1.000 | 0.203 | 0.333 | 0.744 | 0.288 |
-| `wrong_answer_only` | 0.000 | 0.000 | 0.033 | 0.000 | 0.000 | 0.000 |
-| `concat_query_wrong_answer` | 0.819 | 0.959 | 0.975 | 0.696 | 0.785 | 0.541 |
-| `answer_candidate_constrained_template_only` | 0.781 | 0.921 | 1.000 | 0.651 | 0.739 | 0.574 |
-| `concat_query_answer_candidate_constrained_template` | 0.845 | 0.959 | 1.000 | 0.671 | 0.753 | 0.597 |
-| `rrf_query_answer_constrained` | 0.860 | 0.944 | 0.975 | 0.676 | 0.739 | 0.546 |
-| `rrf_query_corpus_steered_short` | 0.922 | 1.000 | 0.975 | 0.714 | 0.803 | 0.559 |
+The main change relative to the earlier note is that some older conclusions no longer hold cleanly. In particular, query-preserving concatenation methods are now much stronger than before, including some oracle and masking controls. The current evidence still supports a leakage story, but it is now more specifically a story about the difference between:
 
-**Key Takeaways for Dense:**
-- **NQ dense still shows leakage sensitivity, but less simply than before:** `raw_expected_answer_only` is very strong in Public (0.965) and clearly worse in CF (0.565), while `query2doc_concat` remains slightly above the CF baseline (0.746 vs 0.705). This supports the NQ leakage story while favoring query-preserving methods over answer-only ones.
-- **SciFact dense no longer supports a blanket "dense collapse" narrative:** the baseline drops from 1.000 to 0.799 under CF, but `hyde_doc_only` and `query2doc_concat` both recover to 0.944. The revised interpretation is that dense retrieval is counterfactually sensitive, but some pseudo-document expansions remain highly effective on SciFact.
-- **HotpotQA dense CF is weak in absolute terms but not uniformly hostile to expansion:** `query2doc_concat` reaches 0.622 and `concat_query_answer_candidate_constrained_template` reaches 0.597, both above the 0.553 baseline. The earlier "everything collapses" framing is too strong.
+- answer-like text used alone
+- answer-like text appended to the original query
 
-### D. Entity and Value Counterfactual Ablation (BM25 nDCG@10, N=100)
+## 2. Headline Takeaways
 
-This ablation goes beyond just renaming entities (like PERSON and LOCATION) and also rewrites numbers, dates, and values.
+- `query2doc_concat` is the strongest and most consistent non-fusion baseline in the latest pilot. Its average `nDCG@10` is `0.883 / 0.651 / 0.690` on `BM25 public / entity-CF / entity+value-CF`, and `0.903 / 0.549 / 0.585` on dense.
+- `safe_rrf_v1` is the strongest new SAFE-family method under the harder `BM25 entity+value-counterfactual` regime. Its average there is `0.689`, essentially tied with `query2doc_concat` at `0.690`, and it is better than `safe_rrf_v0` at `0.661`.
+- `safe_rrf_v0` is the stronger public-facing SAFE-family method. It is clearly better than `safe_rrf_v1` in `BM25 public` (`0.832` vs `0.818`) and slightly better in dense `entity` (`0.573` vs `0.566`).
+- `cf_prompt_query_expansion_rrf` improved enough to become a credible mid-tier method, but it still is not the leading method in any averaged regime. Its best shape is now `BM25 entity+value` (`0.612`) and dense public (`0.866`), not the earlier `NQ-only` story.
+- `raw_expected_answer_only` still behaves like the clearest leakage probe. It is competitive in public settings, then collapses sharply under both counterfactual regimes, especially on `BM25`.
+- The strongest overall average methods in this pilot are not the new SAFE methods. They are still query-preserving concatenation variants such as `concat_query_raw_expected`, `concat_query_random_span_masking`, and `query2doc_concat`.
 
-| Method | NQ (CF E+V) | SciFact (CF E+V) | HotpotQA (CF E+V) |
-|---|:---:|:---:|:---:|
-| `query_only` | 0.639 | 0.944 | 0.672 |
-| `raw_expected_answer_only` | 0.521 | 0.588 | 0.390 |
-| `hyde_doc_only` | 0.630 | 0.959 | 0.424 |
-| `query2doc_concat` | 0.774 | 0.937 | 0.711 |
-| `generative_relevance_feedback_concat` | 0.677 | 0.807 | 0.534 |
-| `corpus_steered_expansion_concat` | 0.593 | 0.780 | 0.553 |
-| `corpus_steered_short_concat` | 0.649 | 0.780 | 0.516 |
-| `masked_expected_answer_only` | 0.493 | 0.556 | 0.213 |
-| `concat_query_masked_expected` | 0.629 | 0.937 | 0.640 |
-| `random_span_masking` | 0.543 | 0.556 | 0.369 |
-| `entity_only_masking` | 0.516 | 0.556 | 0.299 |
-| `generic_mask_slot` | 0.338 | 0.507 | 0.252 |
-| `concat_query_wrong_answer` | 0.636 | 0.944 | 0.671 |
-| `answer_candidate_constrained_template_only` | 0.653 | 0.944 | 0.495 |
-| `concat_query_answer_candidate_constrained_template` | 0.703 | 1.000 | 0.644 |
-| `rrf_query_answer_constrained` | 0.678 | 1.000 | 0.651 |
+## 3. Compact Result Tables
 
-**Key Takeaways for Entity+Value Counterfactual:**
-- **NQ E+V strengthens the leakage story:** `raw_expected_answer_only` falls to 0.521, well below the 0.639 baseline, while `query2doc_concat` rises to 0.774. On this rerun, value scrambling does not merely neutralize raw-answer gains; it makes answer-only reformulation actively harmful.
-- **SciFact E+V separates raw answers from structured reformulation:** `raw_expected_answer_only` drops to 0.588, but `hyde_doc_only` stays at 0.959 and answer-constrained fusion reaches 1.000. The revised pattern is that value scrambling hurts answer-shaped generation much more than pseudo-document or constrained query-preserving methods.
-- **HotpotQA remains fragile, but query-preserving methods still help:** `query2doc_concat` reaches 0.711 above the 0.672 baseline, while raw-answer and mask-only methods remain poor.
+Metric throughout: `nDCG@10`.
 
-### E. Control Re-Check
-- **The wrong-answer control is now much cleaner:** `wrong_answer_only` is effectively zero across the board, while `concat_query_wrong_answer` stays close to `query_only`. This suggests the earlier "wrong-answer injection is a no-op" concern was mostly a query-dominance effect in concatenation, not a bug in the control itself.
-- **Short corpus-steered expansion is an improvement, but not a breakthrough:** `corpus_steered_short_concat` is consistently better than the longer corpus-steered concat on several settings, especially HotpotQA Public (0.826 vs 0.697) and NQ CF (0.674 vs 0.612), but it is still not a leading method overall.
+### BM25 Public
 
----
+| Method | NQ | SciFact | HotpotQA |
+| --- | :---: | :---: | :---: |
+| Query only | 0.653 | 0.893 | 0.798 |
+| Raw expected answer | 0.850 | 0.812 | 0.632 |
+| HyDE | 0.838 | 0.820 | 0.919 |
+| Query2doc | 0.889 | 0.859 | 0.900 |
+| GRF | 0.876 | 0.751 | 0.812 |
+| Corpus-steered short | 0.634 | 0.811 | 0.741 |
+| Query + masked expected | 0.768 | 0.899 | 0.835 |
+| Query + answer-constrained | 0.735 | 0.882 | 0.820 |
+| RRF(query, answer-constrained) | 0.724 | 0.882 | 0.806 |
+| SAFE-RRF v0 | 0.786 | 0.866 | 0.845 |
+| SAFE-RRF v1 | 0.732 | 0.884 | 0.838 |
+| CF-prompt QE RRF | 0.692 | 0.830 | 0.726 |
 
-## 2. Experimental Checklist
+### BM25 Entity-Counterfactual
 
-Based on the **Checklist Before Running Experiments** and the **Minimum Viable Paper Package** defined in the memo, here is the current status:
-
-### ✅ Completed & Validated
-- [x] Verify repo method implementations and output fields.
-- [x] Freeze dataset versions and qrel formats.
-- [x] Add answer/evidence metadata to every query record.
-- [x] Freeze generation prompts and schemas (using OpenRouter).
-- [x] Implement leakage scorer (scoring via `score_generation_methods` works perfectly).
-- [x] Implement and validate the entity-counterfactual benchmark builder (`--counterfactual entity` works).
-- [x] Run small dry-run validation (N=5 public and counterfactual tests complete and validate the thesis).
-- [x] Run the current pilot matrix across BM25/dense and public/entity/entity+value regimes for NQ, SciFact, and HotpotQA.
-- [x] Add integrity outputs for per-query retrieval strings, leakage labels, wrong-answer verification, and counterfactual validation summaries.
-
-### ⏳ Pending (To Be Run)
-The following experiments are required for the full conference submission:
-
-**1. Harder Retrieval Pools / Larger Effective Sample Sizes**
-- [ ] Move beyond `max-corpus=200`, since the current setting leaves only `14/9/15` evaluable queries for NQ/SciFact/HotpotQA.
-  - *Note: this is now the biggest methodological limitation in the pilot. Either the counterfactual corpus generation must be optimized, or a larger fixed hard-negative pool must be built so the effective query count and distractor difficulty both increase.*
-
-**2. Missing Dataset Regimes**
-- [x] HotpotQA Entity-Counterfactual test.
-- [x] SciFact Entity-Counterfactual test.
-- [x] Entity-and-value counterfactual test for all three datasets.
-
-**3. Missing Retrievers**
-- [x] Dense Retriever Entity-Counterfactual tests.
-- [ ] BM25 + RM3 (Optional traditional pseudo-relevance feedback baseline).
-
-**4. Ablations & Controls**
-- [x] Wrong-answer control variants now verify correctly in the new outputs.
-- [ ] Export and review qualitative examples showing successes/failures from the new `records.jsonl` dumps.
-- [ ] Human spot checks on a stratified sample of renamed documents.
-
----
-
-## 3. Compact Paper-Style Tables
-
-Metric: `nDCG@10`.
-These runs used `--max-queries 100` and `--max-corpus 200`.
-The tables below focus on the core methods; the broader control set remains in the JSON outputs and in the earlier sections of this note.
-
-### Effective Query Counts
-
-| Dataset | Evaluable Queries |
-| --- | :---: |
-| NQ | 14 |
-| SciFact | 9 |
-| HotpotQA | 15 |
-
-### BM25 Public vs Entity-Counterfactual
-
-| Method | NQ (Public) | NQ (CF) | SciFact (Public) | SciFact (CF) | HotpotQA (Public) | HotpotQA (CF) |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| Query only | 0.699 | 0.639 | 1.000 | 0.944 | 0.897 | 0.646 |
-| Raw expected answer | 0.889 | 0.562 | 1.000 | 0.889 | 0.842 | 0.320 |
-| HyDE | 0.918 | 0.630 | 0.959 | 0.959 | 1.000 | 0.539 |
-| Query2doc | 0.910 | 0.739 | 0.924 | 0.932 | 0.975 | 0.619 |
-| GRF | 0.903 | 0.407 | 0.959 | 0.865 | 0.975 | 0.408 |
-| Corpus-steered short | 0.668 | 0.674 | 0.918 | 0.780 | 0.826 | 0.470 |
-| Query + masked expected | 0.779 | 0.641 | 1.000 | 0.944 | 0.942 | 0.535 |
-| Query + answer-constrained | 0.757 | 0.693 | 1.000 | 0.959 | 0.883 | 0.606 |
-| RRF(query, answer-constrained) | 0.747 | 0.669 | 1.000 | 1.000 | 0.898 | 0.639 |
-
-### Dense Public vs Entity-Counterfactual
-
-| Method | NQ (Public) | NQ (CF) | SciFact (Public) | SciFact (CF) | HotpotQA (Public) | HotpotQA (CF) |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| Query only | 0.907 | 0.705 | 1.000 | 0.799 | 0.975 | 0.553 |
-| Raw expected answer | 0.965 | 0.565 | 1.000 | 0.707 | 0.835 | 0.434 |
-| HyDE | 0.923 | 0.645 | 1.000 | 0.944 | 1.000 | 0.569 |
-| Query2doc | 0.938 | 0.746 | 1.000 | 0.944 | 1.000 | 0.622 |
-| GRF | 0.941 | 0.704 | 0.937 | 0.776 | 1.000 | 0.604 |
-| Corpus-steered short | 0.907 | 0.710 | 0.918 | 0.710 | 0.951 | 0.535 |
-| Query + masked expected | 0.909 | 0.662 | 1.000 | 0.776 | 1.000 | 0.501 |
-| Query + answer-constrained | 0.845 | 0.671 | 0.959 | 0.753 | 1.000 | 0.597 |
-| RRF(query, answer-constrained) | 0.860 | 0.676 | 0.944 | 0.739 | 0.975 | 0.546 |
+| Method | NQ | SciFact | HotpotQA |
+| --- | :---: | :---: | :---: |
+| Query only | 0.606 | 0.789 | 0.593 |
+| Raw expected answer | 0.465 | 0.475 | 0.347 |
+| HyDE | 0.530 | 0.679 | 0.404 |
+| Query2doc | 0.615 | 0.760 | 0.579 |
+| GRF | 0.447 | 0.636 | 0.278 |
+| Corpus-steered short | 0.570 | 0.720 | 0.512 |
+| Query + masked expected | 0.605 | 0.807 | 0.638 |
+| Query + answer-constrained | 0.622 | 0.802 | 0.581 |
+| RRF(query, answer-constrained) | 0.609 | 0.804 | 0.566 |
+| SAFE-RRF v0 | 0.635 | 0.785 | 0.601 |
+| SAFE-RRF v1 | 0.645 | 0.788 | 0.595 |
+| CF-prompt QE RRF | 0.635 | 0.668 | 0.501 |
 
 ### BM25 Entity+Value Counterfactual
 
 | Method | NQ | SciFact | HotpotQA |
 | --- | :---: | :---: | :---: |
-| Query only | 0.639 | 0.944 | 0.672 |
-| Raw expected answer | 0.521 | 0.588 | 0.390 |
-| HyDE | 0.630 | 0.959 | 0.424 |
-| Query2doc | 0.774 | 0.937 | 0.711 |
-| GRF | 0.677 | 0.807 | 0.534 |
-| Corpus-steered short | 0.649 | 0.780 | 0.516 |
-| Query + masked expected | 0.629 | 0.937 | 0.640 |
-| Query + answer-constrained | 0.703 | 1.000 | 0.644 |
-| RRF(query, answer-constrained) | 0.678 | 1.000 | 0.651 |
+| Query only | 0.584 | 0.811 | 0.604 |
+| Raw expected answer | 0.400 | 0.453 | 0.182 |
+| HyDE | 0.503 | 0.674 | 0.264 |
+| Query2doc | 0.746 | 0.767 | 0.556 |
+| GRF | 0.391 | 0.679 | 0.282 |
+| Corpus-steered short | 0.571 | 0.685 | 0.546 |
+| Query + masked expected | 0.531 | 0.812 | 0.566 |
+| Query + answer-constrained | 0.628 | 0.755 | 0.606 |
+| RRF(query, answer-constrained) | 0.653 | 0.788 | 0.535 |
+| SAFE-RRF v0 | 0.651 | 0.750 | 0.581 |
+| SAFE-RRF v1 | 0.643 | 0.799 | 0.625 |
+| CF-prompt QE RRF | 0.613 | 0.705 | 0.519 |
+
+### Dense Public
+
+| Method | NQ | SciFact | HotpotQA |
+| --- | :---: | :---: | :---: |
+| Query only | 0.882 | 0.928 | 0.885 |
+| Raw expected answer | 0.881 | 0.895 | 0.680 |
+| HyDE | 0.865 | 0.857 | 0.932 |
+| Query2doc | 0.926 | 0.851 | 0.932 |
+| GRF | 0.908 | 0.829 | 0.895 |
+| Corpus-steered short | 0.881 | 0.888 | 0.820 |
+| Query + masked expected | 0.828 | 0.938 | 0.872 |
+| Query + answer-constrained | 0.824 | 0.904 | 0.768 |
+| RRF(query, answer-constrained) | 0.838 | 0.863 | 0.845 |
+| SAFE-RRF v0 | 0.937 | 0.897 | 0.841 |
+| SAFE-RRF v1 | 0.896 | 0.900 | 0.878 |
+| CF-prompt QE RRF | 0.845 | 0.907 | 0.845 |
+
+### Dense Entity-Counterfactual
+
+| Method | NQ | SciFact | HotpotQA |
+| --- | :---: | :---: | :---: |
+| Query only | 0.664 | 0.688 | 0.363 |
+| Raw expected answer | 0.536 | 0.423 | 0.366 |
+| HyDE | 0.610 | 0.673 | 0.322 |
+| Query2doc | 0.602 | 0.711 | 0.333 |
+| GRF | 0.627 | 0.641 | 0.336 |
+| Corpus-steered short | 0.672 | 0.532 | 0.378 |
+| Query + masked expected | 0.603 | 0.715 | 0.322 |
+| Query + answer-constrained | 0.626 | 0.712 | 0.323 |
+| RRF(query, answer-constrained) | 0.610 | 0.714 | 0.273 |
+| SAFE-RRF v0 | 0.664 | 0.708 | 0.348 |
+| SAFE-RRF v1 | 0.657 | 0.684 | 0.356 |
+| CF-prompt QE RRF | 0.677 | 0.593 | 0.349 |
 
 ### Dense Entity+Value Counterfactual
 
 | Method | NQ | SciFact | HotpotQA |
 | --- | :---: | :---: | :---: |
-| Query only | 0.751 | 0.791 | 0.558 |
-| Raw expected answer | 0.677 | 0.522 | 0.377 |
-| HyDE | 0.681 | 0.876 | 0.515 |
-| Query2doc | 0.732 | 0.862 | 0.649 |
-| GRF | 0.710 | 0.807 | 0.590 |
-| Corpus-steered short | 0.714 | 0.720 | 0.468 |
-| Query + masked expected | 0.670 | 0.821 | 0.504 |
-| Query + answer-constrained | 0.705 | 0.799 | 0.524 |
-| RRF(query, answer-constrained) | 0.716 | 0.828 | 0.568 |
+| Query only | 0.628 | 0.720 | 0.411 |
+| Raw expected answer | 0.521 | 0.375 | 0.194 |
+| HyDE | 0.567 | 0.762 | 0.382 |
+| Query2doc | 0.612 | 0.745 | 0.400 |
+| GRF | 0.609 | 0.688 | 0.409 |
+| Corpus-steered short | 0.611 | 0.641 | 0.399 |
+| Query + masked expected | 0.613 | 0.699 | 0.420 |
+| Query + answer-constrained | 0.610 | 0.703 | 0.435 |
+| RRF(query, answer-constrained) | 0.610 | 0.741 | 0.427 |
+| SAFE-RRF v0 | 0.595 | 0.718 | 0.405 |
+| SAFE-RRF v1 | 0.602 | 0.735 | 0.410 |
+| CF-prompt QE RRF | 0.622 | 0.657 | 0.424 |
 
----
+## 4. Main Interpretation
 
-## 4. Delta vs Query-Only and Excess Instability Appendix
+### 4.1 Overall Ranking Shift
 
-Definitions for each method `m` and dataset:
+The new `max-corpus=1000` pilot gives a more complicated picture than the earlier small-corpus pilot:
 
-`public_delta(m) = score_public(m) - score_public(query_only)`
+- `query2doc_concat` is the cleanest strong baseline overall.
+- `safe_rrf_v1` is the best new SAFE-family method under the hardest `BM25 entity+value` shift.
+- `safe_rrf_v0` is still the better public-setting SAFE fusion.
+- `cf_prompt_query_expansion_rrf` improved into the middle tier, but not the top tier.
+- the strongest absolute averages still come from query-preserving concatenation methods, not from raw standalone generations.
 
-`cf_delta(m) = score_cf(m) - score_cf(query_only)`
+The key scientific point is now narrower and stronger: the risky behavior is concentrated in standalone answer-like routes, while query-anchored concatenation often remains competitive even when the appended text is noisy or partially contaminated.
 
-`excess_instability(m) = (score_public(m) - score_cf(m)) - (score_public(query_only) - score_cf(query_only))`
+### 4.2 Answer-Generation Family
 
-Metric used throughout: `nDCG@10`.
+This family includes:
 
-### Effective Query Counts
+- `raw_expected_answer_only`
+- `concat_query_raw_expected`
+- `dual_query_raw_expected_rrf`
+- `weighted_dual_query_raw_expected_rrf_w0p25`
+- `weighted_dual_query_raw_expected_rrf_w0p5`
+- `weighted_dual_query_raw_expected_rrf_w0p75`
 
-| Dataset | Evaluable Queries |
-| --- | :---: |
-| NQ | 14 |
-| SciFact | 9 |
-| HotpotQA | 15 |
+Findings:
 
-### BM25 Entity-Counterfactual Diagnostics
+- `raw_expected_answer_only` remains the clearest leakage probe. It drops from `0.765` to `0.429` to `0.345` on `BM25 public / entity-CF / entity+value-CF`.
+- `concat_query_raw_expected` is still extremely strong. Its averages are `0.888 / 0.698 / 0.656` on `BM25` and `0.920 / 0.588 / 0.605` on dense.
+- `dual_query_raw_expected_rrf` is consistently weaker than direct concatenation.
+- The weighted raw-answer RRF variants help somewhat, but none of them beat `concat_query_raw_expected`.
+- Among weighted raw-answer RRF variants, `w0p25` is the strongest on `BM25 entity` and `BM25 entity+value`, while `w0p75` is the strongest on dense `entity`.
 
-| Method | Avg Public Δ | Avg CF Δ | Avg Excess Instab. | NQ Excess | SciFact Excess | HotpotQA Excess |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| Raw expected answer | +0.045 | -0.153 | +0.198 | +0.268 | +0.056 | +0.272 |
-| HyDE | +0.094 | -0.034 | +0.128 | +0.228 | -0.056 | +0.211 |
-| Query2doc | +0.071 | +0.020 | +0.051 | +0.111 | -0.063 | +0.106 |
-| GRF | +0.081 | -0.183 | +0.264 | +0.436 | +0.038 | +0.317 |
-| Corpus-steered short | -0.061 | -0.102 | +0.041 | -0.066 | +0.082 | +0.106 |
-| Query + masked expected | +0.042 | -0.037 | +0.078 | +0.079 | +0.000 | +0.157 |
-| Query + answer-constrained | +0.015 | +0.009 | +0.005 | +0.004 | -0.015 | +0.026 |
-| RRF(query, answer-constrained) | +0.016 | +0.026 | -0.010 | +0.017 | -0.056 | +0.009 |
-| Wrong answer only | -0.865 | -0.743 | -0.122 | -0.060 | -0.056 | -0.250 |
-| Query + wrong answer | -0.000 | -0.001 | +0.001 | +0.002 | +0.000 | +0.001 |
+Interpretation:
 
-### Dense Entity-Counterfactual Diagnostics
+- answer text by itself is still risky
+- answer text appended to the original query is now a very strong lexical expansion baseline
+- this weakens a simple “all answer-like expansion is bad” story and strengthens a more precise “unanchored answer generation is bad” story
 
-| Method | Avg Public Δ | Avg CF Δ | Avg Excess Instab. | NQ Excess | SciFact Excess | HotpotQA Excess |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| Raw expected answer | -0.028 | -0.117 | +0.089 | +0.198 | +0.092 | -0.022 |
-| HyDE | +0.014 | +0.034 | -0.020 | +0.076 | -0.145 | +0.008 |
-| Query2doc | +0.018 | +0.085 | -0.067 | -0.010 | -0.145 | -0.045 |
-| GRF | -0.002 | +0.009 | -0.011 | +0.035 | -0.040 | -0.027 |
-| Corpus-steered short | -0.036 | -0.034 | -0.002 | -0.005 | +0.007 | -0.007 |
-| Query + masked expected | +0.009 | -0.039 | +0.048 | +0.046 | +0.023 | +0.076 |
-| Query + answer-constrained | -0.026 | -0.012 | -0.014 | -0.028 | +0.005 | -0.020 |
-| RRF(query, answer-constrained) | -0.034 | -0.032 | -0.002 | -0.018 | +0.005 | +0.006 |
-| Wrong answer only | -0.950 | -0.686 | -0.264 | -0.202 | -0.201 | -0.390 |
-| Query + wrong answer | -0.043 | -0.012 | -0.031 | -0.079 | -0.026 | +0.012 |
+### 4.3 Oracle and Post-Hoc Diagnostics
 
-### BM25 Entity+Value Delta vs Query-Only
+This family includes:
 
-| Method | NQ Δ | SciFact Δ | HotpotQA Δ | Avg Δ |
-| --- | :---: | :---: | :---: | :---: |
-| Raw expected answer | -0.118 | -0.357 | -0.282 | -0.252 |
-| HyDE | -0.010 | +0.015 | -0.248 | -0.081 |
-| Query2doc | +0.134 | -0.008 | +0.039 | +0.055 |
-| GRF | +0.038 | -0.138 | -0.138 | -0.079 |
-| Corpus-steered short | +0.009 | -0.164 | -0.156 | -0.103 |
-| Query + masked expected | -0.011 | -0.008 | -0.032 | -0.017 |
-| Query + answer-constrained | +0.064 | +0.056 | -0.028 | +0.030 |
-| RRF(query, answer-constrained) | +0.039 | +0.056 | -0.021 | +0.024 |
-| Wrong answer only | -0.639 | -0.944 | -0.672 | -0.752 |
-| Query + wrong answer | -0.003 | +0.000 | -0.001 | -0.001 |
+- `gold_answer_only`
+- `oracle_answer_masked`
+- `concat_query_oracle_answer_masked`
+- `post_hoc_gold_removed_expected_answer`
+- `concat_query_post_hoc_gold_removed_expected`
 
-### Dense Entity+Value Delta vs Query-Only
+Findings:
 
-| Method | NQ Δ | SciFact Δ | HotpotQA Δ | Avg Δ |
-| --- | :---: | :---: | :---: | :---: |
-| Raw expected answer | -0.074 | -0.269 | -0.181 | -0.175 |
-| HyDE | -0.070 | +0.085 | -0.043 | -0.009 |
-| Query2doc | -0.019 | +0.071 | +0.091 | +0.048 |
-| GRF | -0.041 | +0.015 | +0.032 | +0.002 |
-| Corpus-steered short | -0.037 | -0.071 | -0.090 | -0.066 |
-| Query + masked expected | -0.081 | +0.029 | -0.054 | -0.035 |
-| Query + answer-constrained | -0.046 | +0.008 | -0.033 | -0.024 |
-| RRF(query, answer-constrained) | -0.035 | +0.036 | +0.011 | +0.004 |
-| Wrong answer only | -0.735 | -0.791 | -0.538 | -0.688 |
-| Query + wrong answer | -0.050 | +0.015 | +0.014 | -0.007 |
+- In this pilot, `gold_answer_only`, `oracle_answer_masked`, and `post_hoc_gold_removed_expected_answer` are numerically identical to `raw_expected_answer_only`.
+- `concat_query_oracle_answer_masked` and `concat_query_post_hoc_gold_removed_expected` are numerically identical to `concat_query_raw_expected`.
+
+Interpretation:
+
+- the current corpora and prompts are producing answer strings whose retrieval behavior is functionally equivalent across these oracle/post-hoc variants
+- these diagnostics remain useful, but they are not currently separating distinct mechanisms in this pilot
+
+### 4.4 HyDE, Query2doc, and GRF
+
+This family includes:
+
+- `hyde_doc_only`
+- `query2doc_concat`
+- `generative_relevance_feedback_concat`
+
+Findings:
+
+- `query2doc_concat` is the strongest overall non-fusion baseline and the cleanest baseline to beat.
+- `hyde_doc_only` is strong in public settings but unstable under counterfactual shift, especially on `BM25`.
+- `generative_relevance_feedback_concat` has the sharpest `BM25` instability among the three. Its `BM25` averages fall from `0.813` to `0.454` to `0.450`.
+- On dense retrieval, `HyDE` and `GRF` recover somewhat and become closer to one another.
+
+Interpretation:
+
+- `query2doc_concat` should remain a mandatory paper baseline
+- `HyDE` and `GRF` are useful but currently not stable enough to anchor the main method story
+
+### 4.5 Corpus-Steered Methods
+
+This family includes:
+
+- `corpus_steered_expansion_concat`
+- `corpus_steered_short_concat`
+- `rrf_query_corpus_steered_short`
+
+Findings:
+
+- `corpus_steered_expansion_concat` is weak almost everywhere. The long expansion version is clearly the wrong form.
+- `corpus_steered_short_concat` is materially better than the long version and is one of the more stable middle-tier methods.
+- `rrf_query_corpus_steered_short` is usually better than `corpus_steered_short_concat` on `BM25`, but not clearly better on dense.
+
+Interpretation:
+
+- short corpus steering is worth keeping
+- long appended corpus text is still too noisy
+- if this line of work continues, the short/RRF version is the right base
+
+### 4.6 Masked-Answer Family
+
+This family includes:
+
+- `masked_expected_answer_only`
+- `concat_query_masked_expected`
+- `dual_query_masked_expected_rrf`
+- `rrf_query_masked_expected`
+- `weighted_dual_query_masked_expected_rrf_w0p25`
+- `weighted_dual_query_masked_expected_rrf_w0p5`
+- `weighted_dual_query_masked_expected_rrf_w0p75`
+
+Findings:
+
+- `masked_expected_answer_only` is weak by itself.
+- `concat_query_masked_expected` is strong and consistently better than all masked-answer RRF variants.
+- `dual_query_masked_expected_rrf` and `rrf_query_masked_expected` are numerically identical in this matrix.
+- The weighted masked-answer RRF variants are all mid-tier and do not beat plain concatenation.
+- `w0p75` is the best masked-answer weighted RRF on `BM25 entity`, while `w0p5` is slightly better on `BM25 entity+value`.
+
+Interpretation:
+
+- masking alone does not save the standalone route
+- the simple query-plus-masked-answer concatenation remains the best version of this family
+
+### 4.7 Constrained Template Family
+
+This family includes:
+
+- `answer_candidate_constrained_template_only`
+- `concat_query_answer_candidate_constrained_template`
+- `dual_query_answer_candidate_constrained_template_rrf`
+- `rrf_query_answer_constrained`
+- `weighted_rrf_query_answer_constrained_w0p25`
+- `weighted_rrf_query_answer_constrained_w0p5`
+- `weighted_rrf_query_answer_constrained_w0p75`
+
+Findings:
+
+- `answer_candidate_constrained_template_only` is respectable but clearly below its concatenated version.
+- `concat_query_answer_candidate_constrained_template` is the strongest member of the family on `BM25`.
+- `dual_query_answer_candidate_constrained_template_rrf` and `rrf_query_answer_constrained` are numerically identical in this matrix.
+- The weighted answer-constrained RRF variants do not beat the simple concatenated version.
+- Among weighted answer-constrained RRF variants, `w0p75` is the strongest in `BM25 public` and dense `entity+value`, while `w0p25` and `w0p5` are slightly better in some denser public/CF slices.
+
+Interpretation:
+
+- answer-constrained prompting remains one of the safest paper-facing baselines
+- but the best practical form is still direct query concatenation, not weighted RRF
+
+### 4.8 SAFE-RRF and CF-Prompt Methods
+
+This family includes:
+
+- `safe_rrf_v0`
+- `safe_rrf_v1`
+- `cf_prompt_query_expansion_rrf`
+
+Findings:
+
+- `safe_rrf_v0` is the stronger public SAFE method.
+- `safe_rrf_v1` is the stronger counterfactual SAFE method, especially on `BM25 entity+value` where it reaches `0.689` on average.
+- `cf_prompt_query_expansion_rrf` is now a legitimate middle-tier method:
+  - `BM25 public / entity / entity+value = 0.749 / 0.601 / 0.612`
+  - `dense public / entity / entity+value = 0.866 / 0.540 / 0.568`
+- `cf_prompt_query_expansion_rrf` still trails `query2doc_concat`, `concat_query_raw_expected`, and most strong concatenation baselines.
+
+Interpretation:
+
+- the fusion half of the SAFE-QE idea is currently stronger than the prompting half
+- `safe_rrf_v1` has the best paper shape if the goal is a leakage-aware method
+- `cf_prompt_query_expansion_rrf` is no longer failing, but it still is not the lead method
+
+### 4.9 Masking Controls and Neutral Filler Controls
+
+This family includes:
+
+- `random_span_masking`
+- `concat_query_random_span_masking`
+- `entity_only_masking`
+- `concat_query_entity_only_masking`
+- `generic_mask_slot`
+- `concat_query_generic_mask_slot`
+- `length_matched_neutral_filler`
+
+Findings:
+
+- `random_span_masking` alone is weak, but `concat_query_random_span_masking` is one of the strongest methods in the entire matrix.
+- `entity_only_masking` and `generic_mask_slot` are poor standalone methods, but their concatenated variants are much stronger.
+- `concat_query_entity_only_masking` is notably strong on `BM25 entity`, with an average of `0.698`.
+- `concat_query_generic_mask_slot` is a stable middle-tier method across all six averaged settings.
+- `length_matched_neutral_filler` is a revealing control:
+  - very poor on `BM25`
+  - surprisingly strong on dense, where it averages `0.881 / 0.554 / 0.571`
+
+Interpretation:
+
+- many of these gains look less like precise semantic reformulation and more like “query-preserving extra lexical context helps”
+- the neutral-filler result suggests dense retrieval is much less sensitive than `BM25` to noisy appended text
+
+### 4.10 Wrong-Answer Controls
+
+This family includes:
+
+- `wrong_answer_only`
+- `concat_query_wrong_answer`
+- `rrf_query_wrong_answer`
+- `wrong_answer_injection`
+
+Findings:
+
+- `wrong_answer_only` is effectively zero everywhere, except a tiny dense public average of `0.028`.
+- `concat_query_wrong_answer` and `wrong_answer_injection` are numerically identical in this matrix.
+- `concat_query_wrong_answer` is close to `query_only` in every averaged regime.
+- `rrf_query_wrong_answer` is worse than both `query_only` and `concat_query_wrong_answer`.
+
+Interpretation:
+
+- the wrong-answer control is still basically clean
+- the reason `concat_query_wrong_answer` remains strong is query dominance, not a broken control
+
+## 5. Full All-Method Average Table
+
+Each number below is the average `nDCG@10` over `NQ`, `SciFact`, and `HotpotQA`.
+
+| Method | Family | BM25 Public | BM25 Entity | BM25 E+V | Dense Public | Dense Entity | Dense E+V |
+| --- | --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `query_only` | Core | 0.781 | 0.663 | 0.666 | 0.898 | 0.572 | 0.586 |
+| `hyde_doc_only` | Pseudo-doc | 0.859 | 0.538 | 0.480 | 0.885 | 0.535 | 0.570 |
+| `query2doc_concat` | Pseudo-doc | 0.883 | 0.651 | 0.690 | 0.903 | 0.549 | 0.585 |
+| `generative_relevance_feedback_concat` | Pseudo-doc | 0.813 | 0.454 | 0.450 | 0.877 | 0.535 | 0.569 |
+| `corpus_steered_expansion_concat` | Corpus-steered | 0.661 | 0.520 | 0.496 | 0.775 | 0.518 | 0.529 |
+| `corpus_steered_short_concat` | Corpus-steered | 0.729 | 0.601 | 0.600 | 0.863 | 0.527 | 0.551 |
+| `raw_expected_answer_only` | Answer-generation | 0.765 | 0.429 | 0.345 | 0.818 | 0.442 | 0.363 |
+| `concat_query_raw_expected` | Answer-generation | 0.888 | 0.698 | 0.656 | 0.920 | 0.588 | 0.605 |
+| `dual_query_raw_expected_rrf` | Answer-generation | 0.786 | 0.637 | 0.621 | 0.887 | 0.575 | 0.555 |
+| `masked_expected_answer_only` | Masking | 0.615 | 0.381 | 0.319 | 0.696 | 0.379 | 0.331 |
+| `concat_query_masked_expected` | Masking | 0.834 | 0.683 | 0.636 | 0.879 | 0.547 | 0.577 |
+| `dual_query_masked_expected_rrf` | Masking | 0.730 | 0.635 | 0.591 | 0.804 | 0.525 | 0.558 |
+| `rrf_query_masked_expected` | Masking | 0.730 | 0.635 | 0.591 | 0.804 | 0.525 | 0.558 |
+| `answer_candidate_constrained_template_only` | Constrained | 0.754 | 0.561 | 0.565 | 0.801 | 0.481 | 0.561 |
+| `concat_query_answer_candidate_constrained_template` | Constrained | 0.812 | 0.668 | 0.663 | 0.832 | 0.554 | 0.582 |
+| `dual_query_answer_candidate_constrained_template_rrf` | Constrained | 0.804 | 0.660 | 0.659 | 0.848 | 0.532 | 0.593 |
+| `rrf_query_answer_constrained` | Constrained | 0.804 | 0.660 | 0.659 | 0.848 | 0.532 | 0.593 |
+| `gold_answer_only` | Oracle/diagnostic | 0.765 | 0.429 | 0.345 | 0.818 | 0.442 | 0.363 |
+| `oracle_answer_masked` | Oracle/diagnostic | 0.765 | 0.429 | 0.345 | 0.818 | 0.442 | 0.363 |
+| `concat_query_oracle_answer_masked` | Oracle/diagnostic | 0.888 | 0.698 | 0.656 | 0.920 | 0.588 | 0.605 |
+| `post_hoc_gold_removed_expected_answer` | Oracle/diagnostic | 0.765 | 0.429 | 0.345 | 0.818 | 0.442 | 0.363 |
+| `concat_query_post_hoc_gold_removed_expected` | Oracle/diagnostic | 0.888 | 0.698 | 0.656 | 0.920 | 0.588 | 0.605 |
+| `random_span_masking` | Masking control | 0.758 | 0.422 | 0.338 | 0.806 | 0.410 | 0.350 |
+| `concat_query_random_span_masking` | Masking control | 0.886 | 0.696 | 0.660 | 0.931 | 0.575 | 0.613 |
+| `entity_only_masking` | Masking control | 0.566 | 0.393 | 0.352 | 0.579 | 0.367 | 0.330 |
+| `concat_query_entity_only_masking` | Masking control | 0.832 | 0.698 | 0.632 | 0.877 | 0.557 | 0.592 |
+| `generic_mask_slot` | Masking control | 0.444 | 0.222 | 0.221 | 0.467 | 0.264 | 0.258 |
+| `concat_query_generic_mask_slot` | Masking control | 0.806 | 0.617 | 0.597 | 0.887 | 0.573 | 0.600 |
+| `length_matched_neutral_filler` | Neutral filler | 0.372 | 0.406 | 0.410 | 0.881 | 0.554 | 0.571 |
+| `wrong_answer_only` | Wrong-answer control | 0.000 | 0.000 | 0.000 | 0.028 | 0.000 | 0.000 |
+| `concat_query_wrong_answer` | Wrong-answer control | 0.772 | 0.659 | 0.662 | 0.864 | 0.526 | 0.574 |
+| `rrf_query_wrong_answer` | Wrong-answer control | 0.695 | 0.614 | 0.606 | 0.794 | 0.467 | 0.523 |
+| `wrong_answer_injection` | Wrong-answer control | 0.772 | 0.659 | 0.662 | 0.864 | 0.526 | 0.574 |
+| `rrf_query_corpus_steered_short` | Corpus-steered | 0.784 | 0.664 | 0.661 | 0.887 | 0.542 | 0.577 |
+| `safe_rrf_v0` | SAFE-QE fusion | 0.832 | 0.674 | 0.661 | 0.892 | 0.573 | 0.573 |
+| `safe_rrf_v1` | SAFE-QE fusion | 0.818 | 0.676 | 0.689 | 0.891 | 0.566 | 0.582 |
+| `cf_prompt_query_expansion_rrf` | SAFE-QE prompting | 0.749 | 0.601 | 0.612 | 0.866 | 0.540 | 0.568 |
+| `weighted_dual_query_raw_expected_rrf_w0p25` | Weighted RRF | 0.783 | 0.650 | 0.635 | 0.884 | 0.572 | 0.586 |
+| `weighted_dual_query_masked_expected_rrf_w0p25` | Weighted RRF | 0.749 | 0.636 | 0.603 | 0.829 | 0.561 | 0.582 |
+| `weighted_rrf_query_answer_constrained_w0p25` | Weighted RRF | 0.794 | 0.660 | 0.647 | 0.884 | 0.557 | 0.584 |
+| `weighted_dual_query_raw_expected_rrf_w0p5` | Weighted RRF | 0.768 | 0.642 | 0.633 | 0.888 | 0.580 | 0.566 |
+| `weighted_dual_query_masked_expected_rrf_w0p5` | Weighted RRF | 0.723 | 0.644 | 0.610 | 0.825 | 0.553 | 0.563 |
+| `weighted_rrf_query_answer_constrained_w0p5` | Weighted RRF | 0.796 | 0.658 | 0.651 | 0.876 | 0.555 | 0.588 |
+| `weighted_dual_query_raw_expected_rrf_w0p75` | Weighted RRF | 0.778 | 0.645 | 0.623 | 0.897 | 0.591 | 0.557 |
+| `weighted_dual_query_masked_expected_rrf_w0p75` | Weighted RRF | 0.719 | 0.646 | 0.600 | 0.814 | 0.552 | 0.569 |
+| `weighted_rrf_query_answer_constrained_w0p75` | Weighted RRF | 0.807 | 0.650 | 0.658 | 0.844 | 0.537 | 0.591 |
+
+## 6. Current Recommendation
+
+If the next round has to prioritize only a few method families, the current ordering should be:
+
+1. `query2doc_concat` as the strongest baseline to beat.
+2. `safe_rrf_v1` as the strongest leakage-aware method candidate.
+3. `safe_rrf_v0` as the stronger public-setting SAFE ablation.
+4. `concat_query_answer_candidate_constrained_template` as the safest simple query-preserving baseline.
+5. `cf_prompt_query_expansion_rrf` as a promising but still mid-tier prompting method.
+
+The main paper-facing claim supported by this pilot is no longer “masked expected answers are simply safer.” The stronger claim is:
+
+- standalone answer-like generations are still the clearest failure mode
+- query-preserving concatenation is unexpectedly robust
+- leakage-aware fusion has real promise
+- counterfactual prompting is improving, but it is not yet the dominant method

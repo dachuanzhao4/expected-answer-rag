@@ -31,6 +31,9 @@ class TextGenerator(Protocol):
     def answer_candidate_template(self, query: str) -> str:
         ...
 
+    def counterfactual_prompt_query_expansion(self, query: str, support_context: str = "") -> str:
+        ...
+
     def last_artifact(self) -> dict[str, Any] | None:
         ...
 
@@ -90,6 +93,50 @@ class HeuristicGenerator:
         self._record("answer_candidate_template", query, text, prompt="heuristic template", prompt_version="answer_candidate_template_v1")
         return text
 
+    def counterfactual_prompt_query_expansion(self, query: str, support_context: str = "") -> str:
+        payload = build_counterfactual_prompt_payload(query)
+        anchors = list(payload["known_anchors"])
+        slot = f"[{payload['unknown_slot_type']}]"
+        relation = str(payload["relation_intent"])
+        support_terms = _support_terms_from_context(support_context)
+        support_phrase = " ".join(support_terms[:3]).strip()
+        relation_queries = [
+            f"{' '.join(anchors)} {support_phrase or relation}".strip(),
+            f"{' '.join(anchors)} evidence {support_phrase or relation}".strip(),
+        ]
+        evidence_queries = [
+            f"{' '.join(anchors)} {relation} {' '.join(support_terms[:2])}".strip(),
+        ]
+        answer_slot_query = f"{' '.join(anchors)} {slot}".strip()
+        bridge_query = (
+            f"{' '.join(anchors)} intermediate evidence {support_phrase or relation}".strip()
+            if payload.get("requires_bridge_query")
+            else ""
+        )
+        result = {
+            "obfuscated_question": payload["obfuscated_question"],
+            "entity_map": payload["entity_map"],
+            "known_anchors": payload["known_anchors"],
+            "unknown_slot_type": payload["unknown_slot_type"],
+            "relation_intent": payload["relation_intent"],
+            "relation_queries": _unique_nonempty_queries(relation_queries),
+            "evidence_queries": _unique_nonempty_queries(evidence_queries),
+            "answer_slot_query": answer_slot_query,
+            "bridge_query": bridge_query,
+            "queries": _unique_nonempty_queries(
+                relation_queries + evidence_queries + [answer_slot_query, bridge_query]
+            ),
+        }
+        text = json.dumps(result, ensure_ascii=False)
+        self._record(
+            "counterfactual_prompt_query_expansion_v3",
+            f"Question: {query}\nSupport context: {support_context}",
+            text,
+            prompt="heuristic counterfactual prompt expansion",
+            prompt_version="counterfactual_prompt_query_expansion_v3",
+        )
+        return text
+
     def last_artifact(self) -> dict[str, Any] | None:
         return self._last_artifact
 
@@ -130,6 +177,9 @@ class MissingGenerator:
 
     def answer_candidate_template(self, query: str) -> str:
         raise RuntimeError(f"Missing cached answer-candidate template for query: {query}")
+
+    def counterfactual_prompt_query_expansion(self, query: str, support_context: str = "") -> str:
+        raise RuntimeError(f"Missing cached counterfactual prompt expansion for query: {query}")
 
     def last_artifact(self) -> dict[str, Any] | None:
         return self._last_artifact
@@ -241,6 +291,48 @@ class OpenAITextGenerator:
         )
         return self._complete("answer_candidate_template", query, prompt, prompt_version="answer_candidate_template_v1")
 
+    def counterfactual_prompt_query_expansion(self, query: str, support_context: str = "") -> str:
+        payload = build_counterfactual_prompt_payload(query)
+        prompt = (
+            "You are generating retrieval queries, not answering the question.\n\n"
+            "The question below has been obfuscated to hide public entity triggers that could cause answer recall.\n"
+            "Generate retrieval queries that preserve relation intent without introducing any new named entities, dates, numbers, titles, or answer candidates.\n\n"
+            "Rules:\n"
+            "1. Do not answer the question.\n"
+            "2. Do not introduce new concrete entities, values, dates, or titles.\n"
+            "3. Use only the placeholders shown in the entity map.\n"
+            "4. Preserve the known anchors exactly.\n"
+            "5. Use typed unknown slots when the answer should remain unspecified.\n"
+            "6. Reuse corpus-supported relation terms when they are provided below.\n"
+            "7. If the question is multi-hop, include one bridge-style query but do not invent the bridge entity.\n"
+            "8. Avoid generic fillers such as 'information about', 'documents about', 'what does X represent', or vague paraphrases unless paired with specific corpus-supported relation terms.\n"
+            "9. Every non-slot query should include at least one concrete relation or evidence term from the support context when available.\n"
+            "10. Return strict JSON with keys:\n"
+            "   - relation_queries: list of 2 to 4 short relation-preserving queries\n"
+            "   - evidence_queries: list of 1 to 2 evidence-focused queries\n"
+            "   - answer_slot_query: one query using a typed unknown slot\n"
+            "   - bridge_query: optional string, empty if not needed\n\n"
+            f"Obfuscated question:\n{payload['obfuscated_question']}\n\n"
+            "Entity map:\n"
+            f"{json.dumps(payload['entity_map'], ensure_ascii=False, indent=2)}\n\n"
+            "Support context from first-pass retrieval:\n"
+            f"{support_context or 'None'}\n"
+        )
+        raw_text = self._complete(
+            "counterfactual_prompt_query_expansion_v3",
+            f"Question: {query}\nSupport context: {support_context}",
+            prompt,
+            prompt_version="counterfactual_prompt_query_expansion_v3",
+        )
+        parsed = parse_counterfactual_prompt_query_expansion(raw_text, query, payload)
+        final_text = json.dumps(parsed, ensure_ascii=False)
+        if self._last_artifact is not None:
+            self._last_artifact["raw_model_text"] = raw_text
+            self._last_artifact["output_text"] = final_text
+            self._last_artifact["obfuscated_question"] = payload["obfuscated_question"]
+            self._last_artifact["entity_map"] = payload["entity_map"]
+        return final_text
+
     def last_artifact(self) -> dict[str, Any] | None:
         return self._last_artifact
 
@@ -338,6 +430,13 @@ class CachedTextGenerator:
     def answer_candidate_template(self, query: str) -> str:
         return self._cached("answer_candidate_template", query, lambda: self.inner.answer_candidate_template(query))
 
+    def counterfactual_prompt_query_expansion(self, query: str, support_context: str = "") -> str:
+        return self._cached(
+            "counterfactual_prompt_query_expansion_v3",
+            f"Question: {query}\nSupport context: {support_context}",
+            lambda: self.inner.counterfactual_prompt_query_expansion(query, support_context),
+        )
+
     def last_artifact(self) -> dict[str, Any] | None:
         return self._last_artifact
 
@@ -392,6 +491,9 @@ def _default_prompt_version(task: str) -> str:
         "relevance_feedback": "relevance_feedback_v1",
         "query_aware_mask_answer": "query_aware_mask_answer_v1",
         "answer_candidate_template": "answer_candidate_template_v1",
+        "counterfactual_prompt_query_expansion": "counterfactual_prompt_query_expansion_v1",
+        "counterfactual_prompt_query_expansion_v2": "counterfactual_prompt_query_expansion_v2",
+        "counterfactual_prompt_query_expansion_v3": "counterfactual_prompt_query_expansion_v3",
     }.get(task, f"{task}_v1")
 
 
@@ -413,6 +515,99 @@ def parse_answer_candidate_template(text: str, query: str) -> dict[str, Any]:
     payload.setdefault("relation_intent", relation_intent_from_query(query))
     payload.setdefault("retrieval_text", query)
     return payload
+
+
+def build_counterfactual_prompt_payload(query: str) -> dict[str, Any]:
+    anchors = _extract_obfuscatable_anchors(query)
+    obfuscated = query
+    entity_map = []
+    type_counters: dict[str, int] = {}
+    placeholder_to_original: dict[str, str] = {}
+    for anchor in sorted(anchors, key=len, reverse=True):
+        anchor_type = _infer_obfuscation_type(anchor)
+        type_counters[anchor_type] = type_counters.get(anchor_type, 0) + 1
+        placeholder = f"{anchor_type}_{type_counters[anchor_type]}"
+        obfuscated = re.sub(rf"\b{re.escape(anchor)}\b", placeholder, obfuscated)
+        entity_map.append(
+            {
+                "placeholder": placeholder,
+                "original": anchor,
+                "type": anchor_type,
+                "description": "known anchor from the original question",
+            }
+        )
+        placeholder_to_original[placeholder] = anchor
+    return {
+        "original_question": query,
+        "obfuscated_question": obfuscated,
+        "entity_map": entity_map,
+        "placeholder_to_original": placeholder_to_original,
+        "known_anchors": extract_query_anchors(query),
+        "unknown_slot_type": infer_answer_slot(query).strip("[]"),
+        "relation_intent": relation_intent_from_query(query),
+        "requires_bridge_query": _requires_bridge_query(query),
+    }
+
+
+def parse_counterfactual_prompt_query_expansion(
+    text: str,
+    query: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    raw_queries: list[str] = []
+    relation_queries: list[str] = []
+    evidence_queries: list[str] = []
+    answer_slot_query = ""
+    bridge_query = ""
+    try:
+        loaded = json.loads(text)
+        if isinstance(loaded, dict):
+            relation_queries = _query_list_from_json(loaded.get("relation_queries"))
+            evidence_queries = _query_list_from_json(loaded.get("evidence_queries"))
+            answer_slot_query = str(loaded.get("answer_slot_query") or "").strip()
+            bridge_query = str(loaded.get("bridge_query") or "").strip()
+            candidate_queries = loaded.get("queries", [])
+            if isinstance(candidate_queries, list):
+                raw_queries = [str(item).strip() for item in candidate_queries]
+        elif isinstance(loaded, list):
+            raw_queries = [str(item).strip() for item in loaded]
+    except Exception:
+        raw_queries = []
+    raw_queries = _unique_nonempty_queries(
+        relation_queries + evidence_queries + [answer_slot_query, bridge_query] + raw_queries
+    )
+    if not raw_queries:
+        raw_queries = [
+            re.sub(r"^\s*[-*\d.]+\s*", "", line).strip()
+            for line in text.splitlines()
+            if line.strip()
+        ]
+    if not raw_queries:
+        slot = infer_answer_slot(query)
+        anchors = [item["original"] for item in payload["entity_map"]]
+        raw_queries = [
+            f"{' '.join(anchors)} {relation_intent_from_query(query)}".strip(),
+            f"{' '.join(anchors)} {slot}".strip(),
+        ]
+    queries = []
+    for candidate in raw_queries:
+        queries.append(_deobfuscate_query(candidate, payload))
+    relation_queries = [_deobfuscate_query(candidate, payload) for candidate in relation_queries]
+    evidence_queries = [_deobfuscate_query(candidate, payload) for candidate in evidence_queries]
+    answer_slot_query = _deobfuscate_query(answer_slot_query, payload)
+    bridge_query = _deobfuscate_query(bridge_query, payload)
+    return {
+        "obfuscated_question": payload["obfuscated_question"],
+        "entity_map": payload["entity_map"],
+        "known_anchors": payload["known_anchors"],
+        "unknown_slot_type": payload["unknown_slot_type"],
+        "relation_intent": payload["relation_intent"],
+        "relation_queries": _unique_nonempty_queries(relation_queries),
+        "evidence_queries": _unique_nonempty_queries(evidence_queries),
+        "answer_slot_query": answer_slot_query,
+        "bridge_query": bridge_query,
+        "queries": _unique_nonempty_queries(queries),
+    }
 
 
 def validate_answer_candidate_template(query: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -517,15 +712,110 @@ def infer_answer_slot(query: str) -> str:
 def extract_query_anchors(query: str) -> list[str]:
     anchors = []
     seen = set()
+    banned = {"the", "a", "an", "who", "what", "where", "when", "which", "how", "question"}
     for match in re.findall(r'"([^"\n]{2,120})"', query):
-        if match.lower() not in seen:
+        if match.lower() not in seen and match.lower() not in banned:
             seen.add(match.lower())
             anchors.append(match)
     for match in re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}\b", query):
-        if match.lower() not in seen and match not in {"The", "A", "An"}:
+        if match.lower() not in seen and match.lower() not in banned:
             seen.add(match.lower())
             anchors.append(match)
     return anchors
+
+
+def _extract_obfuscatable_anchors(query: str) -> list[str]:
+    anchors = []
+    seen = set()
+    patterns = [
+        r'"([^"\n]{2,120})"',
+        r"\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,}|of|the|and|for|to|in|on)){0,6}\b",
+    ]
+    stop_values = {"Who", "What", "Where", "When", "Which", "How", "Question", "The", "A", "An"}
+    for pattern in patterns:
+        for match in re.findall(pattern, query):
+            value = str(match).strip()
+            if not value or value in stop_values:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            anchors.append(value)
+    return anchors
+
+
+def _infer_obfuscation_type(anchor: str) -> str:
+    if re.search(r"[\"“”']", anchor):
+        return "WORK"
+    if len(anchor.split()) >= 3:
+        return "WORK"
+    return "ENTITY"
+
+
+def _query_list_from_json(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _support_terms_from_context(support_context: str) -> list[str]:
+    terms = []
+    seen = set()
+    for line in str(support_context or "").splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        if key.strip().lower() != "support_terms":
+            continue
+        for term in value.split(","):
+            normalized = " ".join(term.split()).strip()
+            if not normalized:
+                continue
+            lowered = normalized.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            terms.append(normalized)
+    return terms
+
+
+def _deobfuscate_query(text: str, payload: dict[str, Any]) -> str:
+    updated = str(text or "").strip()
+    if not updated:
+        return ""
+    for item in payload["entity_map"]:
+        updated = updated.replace(item["placeholder"], item["original"])
+    return updated.strip()
+
+
+def _requires_bridge_query(query: str) -> bool:
+    lowered = f" {query.lower()} "
+    markers = [
+        " that ",
+        " which ",
+        " book that inspired ",
+        " author of the book ",
+        " nationality of the author ",
+        " inspired by ",
+        " score for ",
+    ]
+    return any(marker in lowered for marker in markers)
+
+
+def _unique_nonempty_queries(values: list[str]) -> list[str]:
+    queries = []
+    seen = set()
+    for value in values:
+        normalized = " ".join(value.split())
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        queries.append(normalized)
+    return queries[:6]
 
 
 def _mask_capitalized_span(match: re.Match[str], anchors: set[str], slot: str = "[ENTITY]") -> str:
