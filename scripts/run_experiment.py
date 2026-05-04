@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
+import os
+import random
 import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping
@@ -113,6 +116,88 @@ CF_PROMPT_GENERIC_PATTERNS = (
     "illustrative notes",
 )
 
+FAWE_DEFAULT_BETAS = {
+    "raw_expected": 0.25,
+    "masked_expected": 0.25,
+    "answer_constrained": 0.5,
+    "query2doc": 0.25,
+}
+
+MAIN_METHODS = [
+    "query_only",
+    "hyde_doc_only",
+    "query2doc_concat",
+    "generative_relevance_feedback_concat",
+    "corpus_steered_short_concat",
+    "raw_expected_answer_only",
+    "concat_query_raw_expected",
+    "masked_expected_answer_only",
+    "concat_query_masked_expected",
+    "answer_candidate_constrained_template_only",
+    "concat_query_answer_candidate_constrained_template",
+    "random_span_masking",
+    "safe_rrf_v0",
+    "safe_rrf_v1",
+    "cf_prompt_query_expansion_rrf",
+    "concat_query_random_span_masking",
+    "entity_only_masking",
+    "concat_query_entity_only_masking",
+    "generic_mask_slot",
+    "concat_query_generic_mask_slot",
+    "concat_query_wrong_answer",
+    "query_repeated",
+    "query_repeated_length_matched",
+    "query_plus_shuffled_expected",
+    "query_plus_neutral_filler",
+    "neutral_filler_plus_query",
+    "raw_expected_then_query",
+    "fawe_raw_expected_beta0p25",
+    "fawe_masked_expected_beta0p25",
+    "fawe_answer_constrained_beta0p5",
+    "fawe_query2doc_beta0p25",
+    "fawe_safe_adaptive_beta",
+]
+
+SUSPICIOUS_IDENTITY_PAIRS = [
+    ("gold_answer_only", "raw_expected_answer_only"),
+    ("oracle_answer_masked", "raw_expected_answer_only"),
+    ("post_hoc_gold_removed_expected_answer", "raw_expected_answer_only"),
+    ("concat_query_oracle_answer_masked", "concat_query_raw_expected"),
+    ("concat_query_post_hoc_gold_removed_expected", "concat_query_raw_expected"),
+    ("dual_query_masked_expected_rrf", "rrf_query_masked_expected"),
+    ("dual_query_answer_candidate_constrained_template_rrf", "rrf_query_answer_constrained"),
+    ("concat_query_wrong_answer", "wrong_answer_injection"),
+]
+
+RETRIEVAL_AUDIT_METHODS = [
+    "query_only",
+    "raw_expected_answer_only",
+    "concat_query_raw_expected",
+    "raw_expected_then_query",
+    "query2doc_concat",
+    "concat_query_answer_candidate_constrained_template",
+    "safe_rrf_v1",
+    "query_repeated",
+    "query_repeated_length_matched",
+    "query_plus_shuffled_expected",
+    "query_plus_neutral_filler",
+    "neutral_filler_plus_query",
+    "length_matched_neutral_filler",
+    "concat_query_wrong_answer",
+    "fawe_raw_expected_beta0p25",
+    "fawe_answer_constrained_beta0p5",
+    "fawe_safe_adaptive_beta",
+]
+
+CONCAT_RESCUE_PAIRS = [
+    ("raw_expected_answer_only", "concat_query_raw_expected"),
+    ("masked_expected_answer_only", "concat_query_masked_expected"),
+    ("answer_candidate_constrained_template_only", "concat_query_answer_candidate_constrained_template"),
+    ("random_span_masking", "concat_query_random_span_masking"),
+    ("entity_only_masking", "concat_query_entity_only_masking"),
+    ("generic_mask_slot", "concat_query_generic_mask_slot"),
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run leakage-aware retrieval baselines.")
@@ -150,13 +235,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generation-cache", default="outputs/generation_cache.json")
     parser.add_argument("--generation-workers", type=int, default=1, help="Threads for precomputing generations across queries.")
     parser.add_argument("--top-k", type=int, default=20)
+    parser.add_argument("--method-profile", choices=["full", "main"], default="full")
     parser.add_argument(
         "--answer-rrf-weights",
         default="0.25,0.5,0.75",
         help="Comma-separated answer-route weights for weighted RRF. Query route weight is 1.0.",
     )
+    parser.add_argument(
+        "--fawe-betas",
+        default="0.25,0.5",
+        help="Comma-separated FAWE beta values. Named FAWE methods use the closest configured beta.",
+    )
     parser.add_argument("--output", default="outputs/run.json")
     parser.add_argument("--records-output", default="outputs/records.jsonl")
+    parser.add_argument("--audit-sample-size", type=int, default=20)
+    parser.add_argument("--audit-seed", type=int, default=17)
     parser.add_argument("--clear-generation-cache", action="store_true")
     parser.add_argument("--cache-only", action="store_true", help="Use existing generation cache and fail if any generation is missing.")
     parser.add_argument("--cache-namespace", default=None, help="Override generation cache namespace.")
@@ -228,16 +321,37 @@ def main() -> None:
         namespace_aliases=_legacy_cache_namespaces(args),
     )
     answer_rrf_weights = _parse_float_list(args.answer_rrf_weights)
-    runs = _initialize_runs(answer_rrf_weights)
+    fawe_betas = _parse_float_list(args.fawe_betas)
+    selected_methods = _select_methods(args.method_profile, answer_rrf_weights, fawe_betas)
+    runs = _initialize_runs(answer_rrf_weights, fawe_betas, selected_methods)
+    records_path = _resolve_path(args.records_output)
+    records_path.parent.mkdir(parents=True, exist_ok=True)
     doc_map = {doc.doc_id: doc for doc in dataset.corpus}
     cache_namespace = generator.namespace
     cache_namespace_aliases = _legacy_cache_namespaces(args)
+    checkpoint_context = {
+        "dataset": dataset.name,
+        "retriever": args.retriever,
+        "counterfactual_regime": args.counterfactual,
+        "method_profile": args.method_profile,
+        "top_k": args.top_k,
+    }
+    checkpoint_records = _load_checkpoint_records(records_path, dataset, runs.keys(), checkpoint_context)
+    checkpoint_state = _restore_checkpoint_state(checkpoint_records, runs, dataset)
+    completed_query_ids = set(checkpoint_state["completed_query_ids"])
+    remaining_queries = [query for query in dataset.queries if query.query_id not in completed_query_ids]
+    query_positions = {query.query_id: index for index, query in enumerate(dataset.queries)}
+    if checkpoint_records:
+        print(
+            f"Resume: loaded {len(checkpoint_records)} compatible checkpoint record(s); "
+            f"{len(remaining_queries)} querie(s) remaining"
+        )
     query_contexts = {}
     print(
-        f"Phase 1/4: First-pass retrieval over {len(dataset.queries)} queries "
+        f"Phase 1/4: First-pass retrieval over {len(remaining_queries)} remaining querie(s) "
         f"(retriever={args.retriever}, top_k={args.top_k})"
     )
-    for query in tqdm(dataset.queries, desc="First-pass retrieval"):
+    for query in tqdm(remaining_queries, desc="First-pass retrieval"):
         query_rank = retriever.search(query.text, top_k=args.top_k)
         query_contexts[query.query_id] = {
             "query_rank": query_rank,
@@ -252,13 +366,13 @@ def main() -> None:
             ),
         }
     print(
-        f"Phase 2/4: Precomputing generations for {len(dataset.queries)} queries "
+        f"Phase 2/4: Precomputing generations for {len(remaining_queries)} remaining querie(s) "
         f"(workers={args.generation_workers}, generator={args.generator}, model={args.model})"
     )
     generation_bundles = _precompute_generation_bundles(
         args=args,
         dataset_name=dataset.name,
-        queries=dataset.queries,
+        queries=remaining_queries,
         cache=generator.cache,
         cache_namespace=cache_namespace,
         cache_namespace_aliases=cache_namespace_aliases,
@@ -267,346 +381,54 @@ def main() -> None:
             for query_id, bundle in query_contexts.items()
         },
     )
-    print(f"Phase 3/4: Running retrieval fusion and evaluation over {len(dataset.queries)} queries")
-    features_by_query: dict[str, dict[str, object]] = {}
-    generations = {}
-    records = []
-    leakage_by_method: dict[str, list[dict[str, object]]] = {name: [] for name in runs}
-    per_query_method_metrics: dict[str, dict[str, dict[str, float]]] = {name: {} for name in runs}
+    print(f"Phase 3/4: Running retrieval fusion and evaluation over {len(remaining_queries)} remaining querie(s)")
+    features_by_query = dict(checkpoint_state["features_by_query"])
+    generations = dict(checkpoint_state["generations"])
+    records = list(checkpoint_state["records"])
+    leakage_by_method = {
+        name: list(checkpoint_state["leakage_by_method"].get(name, []))
+        for name in runs
+    }
+    per_query_method_metrics = {
+        name: dict(checkpoint_state["per_query_method_metrics"].get(name, {}))
+        for name in runs
+    }
 
-    for index, query in enumerate(tqdm(dataset.queries, desc="Running queries")):
-        query_context = query_contexts[query.query_id]
-        generation_bundle = generation_bundles[query.query_id]
-        relevant_docs = [doc_map[doc_id] for doc_id in dataset.qrels.get(query.query_id, {}) if doc_id in doc_map]
-        query_rank = query_context["query_rank"]
-        cf_prompt_support = query_context["cf_prompt_support"]
-        expected = str(generation_bundle["expected_answer"])
-        expected_artifact = generation_bundle["expected_answer_artifact"]
-        masked = str(generation_bundle["masked_expected_answer"])
-        masked_artifact = generation_bundle["masked_expected_answer_artifact"]
-        hyde_doc = str(generation_bundle["hyde_document"])
-        hyde_artifact = generation_bundle["hyde_document_artifact"]
-        query2doc_doc = str(generation_bundle["query2doc_document"])
-        query2doc_artifact = generation_bundle["query2doc_document_artifact"]
-        relevance_feedback = str(generation_bundle["generative_relevance_feedback"])
-        feedback_artifact = generation_bundle["generative_relevance_feedback_artifact"]
-        template_text = str(generation_bundle["answer_candidate_template"])
-        template_artifact = generation_bundle["answer_candidate_template_artifact"]
-        template_payload = parse_answer_candidate_template(template_text, query.text)
-        template_validation = validate_answer_candidate_template(query.text, template_payload)
-        template_retrieval_text = str(template_payload.get("retrieval_text") or query.text)
-        cf_prompt_text = str(generation_bundle["cf_prompt_query_expansion"])
-        cf_prompt_artifact = generation_bundle["cf_prompt_query_expansion_artifact"]
-        cf_prompt_payload = parse_counterfactual_prompt_query_expansion(
-            cf_prompt_text,
-            query.text,
-            build_counterfactual_prompt_payload(query.text),
-        )
-        cf_prompt_queries = list(cf_prompt_payload.get("queries") or [])
-        cf_prompt_joined = "\n".join(cf_prompt_queries).strip()
-
-        oracle_masked = remove_gold_from_text(expected, list(query.all_answer_strings))
-        posthoc_gold_removed = remove_gold_from_text(expected, list(query.all_answer_strings))
-        random_masked = random_span_mask_answer(expected, query.text, seed=args.counterfactual_seed + index)
-        entity_only_masked = entity_only_mask_answer(expected, query.text)
-        generic_masked = generic_mask_answer(masked)
-        length_matched_filler = length_matched_neutral_filler(query.text, expected)
-        wrong_answer_candidate = _wrong_answer_candidate(dataset, index)
-        wrong_answer_only = wrong_answer_candidate
-        wrong_answer_injection = f"{query.text}\n{wrong_answer_candidate}".strip()
-
-        cf_prompt_bundle = _cf_prompt_subquery_bundle(
-            query_text=query.text,
-            query_rank=query_rank,
-            cf_prompt_payload=cf_prompt_payload,
-            retriever=retriever,
-            doc_map=doc_map,
-            top_k=args.top_k,
-            support_terms=cf_prompt_support["support_terms"],
-        )
-        cf_prompt_selected_queries = list(cf_prompt_bundle["selected_queries"])
-        cf_prompt_selected_weights = list(cf_prompt_bundle["selected_weights"])
-        cf_prompt_selected_joined = "\n".join(cf_prompt_selected_queries).strip()
-        corpus_steered_text = str(query_context["corpus_steered_text"])
-        corpus_steered_short_text = str(query_context["corpus_steered_short_text"])
-
-        method_queries = {
-            "hyde_doc_only": hyde_doc,
-            "query2doc_concat": f"{query.text}\n{query2doc_doc}",
-            "generative_relevance_feedback_concat": f"{query.text}\n{relevance_feedback}",
-            "corpus_steered_expansion_concat": f"{query.text}\n{corpus_steered_text}",
-            "corpus_steered_short_concat": f"{query.text}\n{corpus_steered_short_text}",
-            "raw_expected_answer_only": expected,
-            "concat_query_raw_expected": f"{query.text}\n{expected}",
-            "masked_expected_answer_only": masked,
-            "concat_query_masked_expected": f"{query.text}\n{masked}",
-            "answer_candidate_constrained_template_only": template_retrieval_text,
-            "concat_query_answer_candidate_constrained_template": f"{query.text}\n{template_retrieval_text}",
-            "gold_answer_only": " ".join(query.answers) if query.answers else expected,
-            "oracle_answer_masked": oracle_masked,
-            "concat_query_oracle_answer_masked": f"{query.text}\n{oracle_masked}",
-            "post_hoc_gold_removed_expected_answer": posthoc_gold_removed,
-            "concat_query_post_hoc_gold_removed_expected": f"{query.text}\n{posthoc_gold_removed}",
-            "random_span_masking": random_masked,
-            "concat_query_random_span_masking": f"{query.text}\n{random_masked}",
-            "entity_only_masking": entity_only_masked,
-            "concat_query_entity_only_masking": f"{query.text}\n{entity_only_masked}",
-            "generic_mask_slot": generic_masked,
-            "concat_query_generic_mask_slot": f"{query.text}\n{generic_masked}",
-            "length_matched_neutral_filler": length_matched_filler,
-            "wrong_answer_only": wrong_answer_only,
-            "concat_query_wrong_answer": wrong_answer_injection,
-            "wrong_answer_injection": wrong_answer_injection,
-        }
-        method_queries["query_only"] = query.text
-
-        rankings = {"query_only": query_rank}
-        for method_name, method_query in method_queries.items():
-            if method_name == "query_only":
-                continue
-            rankings[method_name] = retriever.search(method_query, top_k=args.top_k)
-        rankings["cf_prompt_query_expansion_rrf"] = weighted_reciprocal_rank_fusion(
-            [query_rank, *cf_prompt_bundle["rankings"]] if cf_prompt_bundle["rankings"] else [query_rank],
-            [1.0, *cf_prompt_selected_weights] if cf_prompt_bundle["rankings"] else [1.0],
-            top_k=args.top_k,
-        )
-
-        rankings["dual_query_raw_expected_rrf"] = reciprocal_rank_fusion([query_rank, rankings["raw_expected_answer_only"]], top_k=args.top_k)
-        rankings["dual_query_masked_expected_rrf"] = reciprocal_rank_fusion([query_rank, rankings["masked_expected_answer_only"]], top_k=args.top_k)
-        rankings["dual_query_answer_candidate_constrained_template_rrf"] = reciprocal_rank_fusion(
-            [query_rank, rankings["answer_candidate_constrained_template_only"]],
-            top_k=args.top_k,
-        )
-        rankings["rrf_query_masked_expected"] = rankings["dual_query_masked_expected_rrf"]
-        rankings["rrf_query_answer_constrained"] = rankings["dual_query_answer_candidate_constrained_template_rrf"]
-        rankings["rrf_query_wrong_answer"] = reciprocal_rank_fusion(
-            [query_rank, rankings["wrong_answer_only"]],
-            top_k=args.top_k,
-        )
-        rankings["rrf_query_corpus_steered_short"] = reciprocal_rank_fusion(
-            [query_rank, rankings["corpus_steered_short_concat"]],
-            top_k=args.top_k,
-        )
-        rankings["safe_rrf_v0"] = weighted_reciprocal_rank_fusion(
-            [
-                query_rank,
-                rankings["generative_relevance_feedback_concat"],
-                rankings["query2doc_concat"],
-                rankings["concat_query_answer_candidate_constrained_template"],
-            ],
-            [
-                SAFE_RRF_V0_WEIGHTS["query_only"],
-                SAFE_RRF_V0_WEIGHTS["generative_relevance_feedback_concat"],
-                SAFE_RRF_V0_WEIGHTS["query2doc_concat"],
-                SAFE_RRF_V0_WEIGHTS["concat_query_answer_candidate_constrained_template"],
-            ],
-            top_k=args.top_k,
-        )
-        for weight in answer_rrf_weights:
-            suffix = _weight_suffix(weight)
-            rankings[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = weighted_reciprocal_rank_fusion(
-                [query_rank, rankings["raw_expected_answer_only"]],
-                [1.0, weight],
-                top_k=args.top_k,
+    checkpoint_handle = records_path.open("a", encoding="utf-8")
+    try:
+        for index, query in enumerate(tqdm(remaining_queries, desc="Running queries")):
+            processed = _process_query(
+                args=args,
+                dataset=dataset,
+                query=query,
+                query_index=query_positions[query.query_id],
+                query_context=query_contexts[query.query_id],
+                generation_bundle=generation_bundles[query.query_id],
+                retriever=retriever,
+                doc_map=doc_map,
+                answer_rrf_weights=answer_rrf_weights,
+                fawe_betas=fawe_betas,
+                run_method_names=runs.keys(),
+                checkpoint_context=checkpoint_context,
             )
-            rankings[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = weighted_reciprocal_rank_fusion(
-                [query_rank, rankings["masked_expected_answer_only"]],
-                [1.0, weight],
-                top_k=args.top_k,
-            )
-            rankings[f"weighted_rrf_query_answer_constrained_w{suffix}"] = weighted_reciprocal_rank_fusion(
-                [query_rank, rankings["answer_candidate_constrained_template_only"]],
-                [1.0, weight],
-                top_k=args.top_k,
-            )
-
-        for run_name in runs:
-            if run_name in rankings:
-                runs[run_name][query.query_id] = rankings[run_name]
-                per_query_method_metrics[run_name][query.query_id] = per_query_metrics(
-                    rankings[run_name],
-                    dataset.qrels.get(query.query_id, {}),
+            query_id = query.query_id
+            features_by_query[query_id] = processed["features_by_query"]
+            generations[query_id] = processed["generation"]
+            for method_name, score in processed["leakage_scores"].items():
+                if method_name in leakage_by_method:
+                    leakage_by_method[method_name].append(score)
+            for run_name, ranking in processed["record"]["rankings"].items():
+                if run_name not in runs:
+                    continue
+                runs[run_name][query_id] = ranking
+                per_query_method_metrics[run_name][query_id] = per_query_metrics(
+                    ranking,
+                    dataset.qrels.get(query_id, {}),
                 )
-
-        base_features = generation_features(query, expected, masked, hyde_doc)
-        generated_texts_for_leakage = {
-            "raw_expected_answer_only": expected,
-            "concat_query_raw_expected": f"{query.text}\n{expected}",
-            "masked_expected_answer_only": masked,
-            "concat_query_masked_expected": f"{query.text}\n{masked}",
-            "hyde_doc_only": hyde_doc,
-            "query2doc_concat": query2doc_doc,
-            "generative_relevance_feedback_concat": relevance_feedback,
-            "corpus_steered_expansion_concat": corpus_steered_text,
-            "corpus_steered_short_concat": corpus_steered_short_text,
-            "answer_candidate_constrained_template_only": template_retrieval_text,
-            "concat_query_answer_candidate_constrained_template": f"{query.text}\n{template_retrieval_text}",
-            "oracle_answer_masked": oracle_masked,
-            "concat_query_oracle_answer_masked": f"{query.text}\n{oracle_masked}",
-            "post_hoc_gold_removed_expected_answer": posthoc_gold_removed,
-            "concat_query_post_hoc_gold_removed_expected": f"{query.text}\n{posthoc_gold_removed}",
-            "random_span_masking": random_masked,
-            "concat_query_random_span_masking": f"{query.text}\n{random_masked}",
-            "entity_only_masking": entity_only_masked,
-            "concat_query_entity_only_masking": f"{query.text}\n{entity_only_masked}",
-            "generic_mask_slot": generic_masked,
-            "concat_query_generic_mask_slot": f"{query.text}\n{generic_masked}",
-            "length_matched_neutral_filler": length_matched_filler,
-            "wrong_answer_only": wrong_answer_only,
-            "concat_query_wrong_answer": wrong_answer_injection,
-            "wrong_answer_injection": wrong_answer_injection,
-            "cf_prompt_query_expansion_rrf": cf_prompt_selected_joined or cf_prompt_joined,
-        }
-        leakage_scores = score_generation_methods(query, generated_texts_for_leakage, relevant_docs)
-        leakage_labels = {
-            method_name: {
-                "bucket": leakage_bucket_name(score),
-                "is_leakage_positive": leakage_bucket_name(score) != "leakage_negative",
-                "has_exact_answer_leakage": bool(score.get("exact_answer_leakage")),
-                "has_alias_answer_leakage": bool(score.get("alias_answer_leakage")),
-                "has_candidate_injection": bool(score.get("answer_candidate_leakage")),
-                "has_wrong_prior_injection": bool(score.get("wrong_prior_candidates")),
-                "has_unsupported_injection": bool(score.get("unsupported_candidates")),
-            }
-            for method_name, score in leakage_scores.items()
-        }
-        bucket = leakage_bucket_name(leakage_scores["raw_expected_answer_only"])
-        features_by_query[query.query_id] = {
-            **base_features,
-            "leakage_bucket": bucket,
-            "raw_expected_answer_only": leakage_scores["raw_expected_answer_only"],
-        }
-        route_reliability = _route_reliability_bundle(
-            query_text=query.text,
-            query_rank=query_rank,
-            route_texts={
-                "generative_relevance_feedback_concat": relevance_feedback,
-                "query2doc_concat": query2doc_doc,
-                "concat_query_answer_candidate_constrained_template": template_retrieval_text,
-            },
-            route_rankings={
-                "generative_relevance_feedback_concat": rankings["generative_relevance_feedback_concat"],
-                "query2doc_concat": rankings["query2doc_concat"],
-                "concat_query_answer_candidate_constrained_template": rankings["concat_query_answer_candidate_constrained_template"],
-            },
-            doc_map=doc_map,
-            template_validation=template_validation,
-        )
-        safe_rrf_v1_weights = route_reliability["weights"]
-        rankings["safe_rrf_v1"] = weighted_reciprocal_rank_fusion(
-            [
-                query_rank,
-                rankings["generative_relevance_feedback_concat"],
-                rankings["query2doc_concat"],
-                rankings["concat_query_answer_candidate_constrained_template"],
-            ],
-            [
-                safe_rrf_v1_weights["query_only"],
-                safe_rrf_v1_weights["generative_relevance_feedback_concat"],
-                safe_rrf_v1_weights["query2doc_concat"],
-                safe_rrf_v1_weights["concat_query_answer_candidate_constrained_template"],
-            ],
-            top_k=args.top_k,
-        )
-        runs["safe_rrf_v1"][query.query_id] = rankings["safe_rrf_v1"]
-        per_query_method_metrics["safe_rrf_v1"][query.query_id] = per_query_metrics(
-            rankings["safe_rrf_v1"],
-            dataset.qrels.get(query.query_id, {}),
-        )
-        retrieval_strings = dict(method_queries)
-        retrieval_strings["cf_prompt_query_expansion_rrf"] = cf_prompt_selected_joined or cf_prompt_joined
-        retrieval_specs = _build_retrieval_specs(
-            query_text=query.text,
-            method_queries=method_queries,
-            answer_rrf_weights=answer_rrf_weights,
-            cf_prompt_queries=cf_prompt_queries,
-            safe_rrf_v1_weights=safe_rrf_v1_weights,
-            cf_prompt_bundle=cf_prompt_bundle,
-        )
-        wrong_answer_verification = {
-            "candidate": wrong_answer_candidate,
-            "candidate_present_in_wrong_answer_only": _contains_text(wrong_answer_only, wrong_answer_candidate),
-            "candidate_present_in_concat_query_wrong_answer": _contains_text(wrong_answer_injection, wrong_answer_candidate),
-            "concat_query_wrong_answer_differs_from_query_only": _normalize_text(wrong_answer_injection) != _normalize_text(query.text),
-        }
-
-        generations[query.query_id] = {
-            "query": query.text,
-            "answers": list(query.answers),
-            "answer_aliases": list(query.answer_aliases),
-            "expected_answer": expected,
-            "masked_expected_answer": masked,
-            "hyde_document": hyde_doc,
-            "query2doc_document": query2doc_doc,
-            "generative_relevance_feedback": relevance_feedback,
-            "corpus_steered_expansion": corpus_steered_text,
-            "corpus_steered_short_expansion": corpus_steered_short_text,
-            "answer_candidate_template": template_text,
-            "answer_candidate_template_parsed": template_payload,
-            "answer_candidate_template_validation": template_validation,
-            "cf_prompt_query_expansion": cf_prompt_payload,
-            "cf_prompt_query_expansion_selection": {
-                "support_context": cf_prompt_support,
-                "generation_workers": args.generation_workers,
-                "selected_queries": cf_prompt_selected_queries,
-                "selected_weights": cf_prompt_selected_weights,
-                "candidates": cf_prompt_bundle["candidates"],
-            },
-            "retrieval_strings": retrieval_strings,
-            "retrieval_specs": retrieval_specs,
-            "adaptive_fusion": {
-                "safe_rrf_v0_weights": SAFE_RRF_V0_WEIGHTS,
-                "safe_rrf_v1": route_reliability,
-            },
-            "controls": {
-                "oracle_answer_masked": oracle_masked,
-                "post_hoc_gold_removed_expected_answer": posthoc_gold_removed,
-                "random_span_masking": random_masked,
-                "entity_only_masking": entity_only_masked,
-                "generic_mask_slot": generic_masked,
-                "length_matched_neutral_filler": length_matched_filler,
-                "wrong_answer_only": wrong_answer_only,
-                "concat_query_wrong_answer": wrong_answer_injection,
-                "wrong_answer_injection": wrong_answer_injection,
-            },
-            "integrity": {
-                "wrong_answer_verification": wrong_answer_verification,
-            },
-            "artifacts": {
-                "expected_answer": expected_artifact,
-                "masked_expected_answer": masked_artifact,
-                "hyde_document": hyde_artifact,
-                "query2doc_document": query2doc_artifact,
-                "generative_relevance_feedback": feedback_artifact,
-                "answer_candidate_template": template_artifact,
-                "cf_prompt_query_expansion": cf_prompt_artifact,
-            },
-            "features": base_features,
-            "leakage": leakage_scores,
-            "leakage_labels": leakage_labels,
-        }
-
-        for method_name, score in leakage_scores.items():
-            if method_name in leakage_by_method:
-                leakage_by_method[method_name].append(score)
-
-        records.append(
-            {
-                "query_id": query.query_id,
-                "query": query.text,
-                "answers": list(query.answers),
-                "answer_aliases": list(query.answer_aliases),
-                "generation": generations[query.query_id],
-                "leakage_labels": leakage_labels,
-                "integrity": {
-                    "wrong_answer_verification": wrong_answer_verification,
-                },
-                "retrieval_strings": retrieval_strings,
-                "retrieval_specs": retrieval_specs,
-                "rankings": {name: runs[name][query.query_id] for name in runs if query.query_id in runs[name]},
-                "qrels": dataset.qrels.get(query.query_id, {}),
-            }
-        )
+            records.append(processed["record"])
+            _append_checkpoint_record(checkpoint_handle, processed["record"])
+    finally:
+        checkpoint_handle.close()
 
     metrics = {name: evaluate_run(run, dataset.qrels) for name, run in runs.items()}
     leakage_metrics = {name: evaluate_by_leakage_bucket(run, dataset.qrels, features_by_query) for name, run in runs.items()}
@@ -617,6 +439,16 @@ def main() -> None:
         bootstrap_samples=args.stats_bootstrap_samples,
         permutation_samples=args.stats_permutation_samples,
     )
+    duplicate_method_audit = _duplicate_method_audit(records, SUSPICIOUS_IDENTITY_PAIRS)
+    concatenation_rescue_summary = _concatenation_rescue_summary(records, CONCAT_RESCUE_PAIRS)
+    query_dominance_summary = _query_dominance_summary(records)
+    retrieval_audit_samples = _sample_retrieval_audit(
+        records,
+        audit_methods=RETRIEVAL_AUDIT_METHODS,
+        sample_size=args.audit_sample_size,
+        seed=args.audit_seed,
+    )
+    dense_position_audit = _dense_position_audit(records) if args.retriever == "dense" else None
     qualitative = {
         "raw_expected_answer_only": select_qualitative_examples(records, "raw_expected_answer_only", limit=args.qualitative_limit),
         "masked_expected_answer_only": select_qualitative_examples(records, "masked_expected_answer_only", limit=args.qualitative_limit),
@@ -635,6 +467,9 @@ def main() -> None:
         "query_prefix": args.query_prefix if args.retriever == "dense" else None,
         "embedding_cache": str(_resolve_path(args.embedding_cache)) if args.embedding_cache else None,
         "answer_rrf_weights": answer_rrf_weights,
+        "fawe_betas": fawe_betas,
+        "method_profile": args.method_profile,
+        "methods_evaluated": list(runs),
         "generator": args.generator,
         "model": args.model if args.generator in {"openai", "openrouter"} else None,
         "generation_cache_path": str(cache_path),
@@ -642,6 +477,11 @@ def main() -> None:
         "counterfactual_regime": args.counterfactual,
         "counterfactual_alias_style": args.counterfactual_alias_style if args.counterfactual != "none" else None,
         "top_k": args.top_k,
+        "resume_summary": {
+            "checkpoint_records_loaded": len(checkpoint_records),
+            "queries_completed_from_checkpoint": len(completed_query_ids),
+            "queries_processed_this_run": len(remaining_queries),
+        },
         "frozen_primary_metrics": FROZEN_PRIMARY_METRICS,
         "frozen_primary_comparisons": FROZEN_PRIMARY_COMPARISONS,
         "metrics": metrics,
@@ -650,6 +490,11 @@ def main() -> None:
         "method_leakage_summary": summarize_method_leakage(leakage_by_method),
         "leakage_bucket_metrics": leakage_metrics,
         "primary_comparison_stats": stats,
+        "concatenation_rescue_summary": concatenation_rescue_summary,
+        "query_dominance_summary": query_dominance_summary,
+        "duplicate_method_audit": duplicate_method_audit,
+        "retrieval_audit_samples": retrieval_audit_samples,
+        "dense_position_audit": dense_position_audit,
         "qualitative_examples": qualitative,
         "integrity_summary": _summarize_integrity(records, counterfactual_validation),
         "sample_generations": dict(list(generations.items())[:5]),
@@ -689,7 +534,11 @@ def _make_base_generator(args: argparse.Namespace):
     return HeuristicGenerator()
 
 
-def _initialize_runs(answer_rrf_weights: list[float]) -> Dict[str, Dict[str, RankedList]]:
+def _initialize_runs(
+    answer_rrf_weights: list[float],
+    fawe_betas: list[float],
+    selected_methods: list[str],
+) -> Dict[str, Dict[str, RankedList]]:
     base_methods = {
         "query_only": {},
         "hyde_doc_only": {},
@@ -724,17 +573,321 @@ def _initialize_runs(answer_rrf_weights: list[float]) -> Dict[str, Dict[str, Ran
         "concat_query_wrong_answer": {},
         "rrf_query_wrong_answer": {},
         "wrong_answer_injection": {},
+        "query_repeated": {},
+        "query_repeated_length_matched": {},
+        "query_plus_shuffled_expected": {},
+        "query_plus_neutral_filler": {},
+        "neutral_filler_plus_query": {},
+        "raw_expected_then_query": {},
         "rrf_query_corpus_steered_short": {},
         "safe_rrf_v0": {},
         "safe_rrf_v1": {},
         "cf_prompt_query_expansion_rrf": {},
+        "fawe_raw_expected_beta0p25": {},
+        "fawe_masked_expected_beta0p25": {},
+        "fawe_answer_constrained_beta0p5": {},
+        "fawe_query2doc_beta0p25": {},
+        "fawe_safe_adaptive_beta": {},
     }
     for weight in answer_rrf_weights:
         suffix = _weight_suffix(weight)
         base_methods[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = {}
         base_methods[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = {}
         base_methods[f"weighted_rrf_query_answer_constrained_w{suffix}"] = {}
-    return base_methods
+    if not fawe_betas:
+        for name in [
+            "fawe_raw_expected_beta0p25",
+            "fawe_masked_expected_beta0p25",
+            "fawe_answer_constrained_beta0p5",
+            "fawe_query2doc_beta0p25",
+            "fawe_safe_adaptive_beta",
+        ]:
+            base_methods.pop(name, None)
+    if not selected_methods:
+        return base_methods
+    return {name: base_methods[name] for name in selected_methods if name in base_methods}
+
+
+def _select_methods(method_profile: str, answer_rrf_weights: list[float], fawe_betas: list[float]) -> list[str]:
+    all_methods = list(_initialize_runs(answer_rrf_weights, fawe_betas, selected_methods=[]).keys())
+    if method_profile == "full":
+        return all_methods
+    keep = set(MAIN_METHODS)
+    keep.update({"fawe_safe_adaptive_beta"} if fawe_betas else set())
+    return [name for name in all_methods if name in keep]
+
+
+def _repeat_query_to_match_text(query_text: str, reference_text: str) -> str:
+    query_tokens = query_text.split()
+    if not query_tokens:
+        return query_text
+    needed = max(len(reference_text.split()), 1)
+    repeated = [query_tokens[index % len(query_tokens)] for index in range(needed)]
+    return f"{query_text}\n{' '.join(repeated)}".strip()
+
+
+def _shuffle_text_tokens(text: str, seed: int) -> str:
+    tokens = text.split()
+    if len(tokens) <= 1:
+        return text
+    rng = random.Random(seed)
+    shuffled = list(tokens)
+    rng.shuffle(shuffled)
+    return " ".join(shuffled)
+
+
+def _prepend_filler_to_query(query_text: str, reference_text: str) -> str:
+    filler_tokens = max(len(reference_text.split()), 1)
+    filler = " ".join(["relevant"] * filler_tokens)
+    return f"{filler}\n{query_text}".strip()
+
+
+def _resolve_named_fawe_betas(fawe_betas: list[float]) -> dict[str, float]:
+    if not fawe_betas:
+        fawe_betas = sorted(set(FAWE_DEFAULT_BETAS.values()))
+    return {
+        name: _closest_beta(fawe_betas, default_beta)
+        for name, default_beta in FAWE_DEFAULT_BETAS.items()
+    }
+
+
+def _closest_beta(betas: list[float], target: float) -> float:
+    return min(betas, key=lambda value: (abs(value - target), value))
+
+
+def _fielded_anchor_weighted_search(
+    retriever,
+    query_text: str,
+    expansion_text: str,
+    beta: float,
+    top_k: int,
+    doc_count: int,
+) -> RankedList:
+    query_scores = dict(retriever.search(query_text, top_k=doc_count))
+    expansion_scores = dict(retriever.search(expansion_text, top_k=doc_count))
+    doc_ids = set(query_scores) | set(expansion_scores)
+    combined = [
+        (doc_id, float(query_scores.get(doc_id, 0.0)) + float(beta) * float(expansion_scores.get(doc_id, 0.0)))
+        for doc_id in doc_ids
+    ]
+    combined.sort(key=lambda item: item[1], reverse=True)
+    return combined[:top_k]
+
+
+def _format_fawe_retrieval_text(query_text: str, expansion_text: str, beta: float) -> str:
+    return (
+        f"FAWE(query_weight=1.0,beta={beta})\n"
+        f"[QUERY]\n{query_text}\n"
+        f"[EXPANSION]\n{expansion_text}"
+    ).strip()
+
+
+def _safe_adaptive_fawe_beta(
+    features: Mapping[str, Mapping[str, float | int]],
+    template_validation: Mapping[str, object],
+) -> float:
+    answer_constrained = features["concat_query_answer_candidate_constrained_template"]
+    anchor_coverage = float(answer_constrained["anchor_coverage"])
+    unsupported = int(answer_constrained["unsupported_entity_count"])
+    support = float(answer_constrained["support"])
+    if bool(template_validation.get("valid")) and unsupported == 0 and anchor_coverage >= 0.75 and support >= 0.45:
+        return 0.5
+    if bool(template_validation.get("has_required_keys")) and unsupported <= 1 and anchor_coverage >= 0.5:
+        return 0.35
+    return 0.2
+
+
+def _build_retrieval_diagnostics(
+    query_id: str,
+    original_query_text: str,
+    query_text: str,
+    retrieval_strings: Mapping[str, str],
+    rankings: Mapping[str, RankedList],
+    qrels: Mapping[str, int],
+    included_methods: Iterable[str],
+) -> dict[str, dict[str, object]]:
+    diagnostics: dict[str, dict[str, object]] = {}
+    relevant_docids = [doc_id for doc_id, score in qrels.items() if score > 0]
+    for method_name in included_methods:
+        retrieval_text = str(retrieval_strings.get(method_name, ""))
+        ranking = rankings.get(method_name, [])
+        diagnostics[method_name] = {
+            "query_id": query_id,
+            "original_query": original_query_text,
+            "counterfactual_query": query_text,
+            "final_retrieval_text": retrieval_text,
+            "retriever_input_hash": hashlib.sha256(retrieval_text.encode("utf-8")).hexdigest(),
+            "top10_docids": [doc_id for doc_id, _score in ranking[:10]],
+            "relevant_docids": relevant_docids,
+        }
+    return diagnostics
+
+
+def _duplicate_method_audit(
+    records: list[dict[str, object]],
+    suspicious_pairs: list[tuple[str, str]],
+) -> dict[str, dict[str, object]]:
+    summary: dict[str, dict[str, object]] = {}
+    for left, right in suspicious_pairs:
+        text_same = 0
+        top10_same = 0
+        shared = 0
+        for record in records:
+            retrieval_strings = record.get("retrieval_strings", {})
+            rankings = record.get("rankings", {})
+            retrieval_diagnostics = record.get("retrieval_diagnostics", {})
+            if left not in retrieval_strings or right not in retrieval_strings:
+                continue
+            shared += 1
+            if _normalize_text(str(retrieval_strings[left])) == _normalize_text(str(retrieval_strings[right])):
+                text_same += 1
+            left_top = [doc_id for doc_id, _score in rankings.get(left, [])[:10]]
+            right_top = [doc_id for doc_id, _score in rankings.get(right, [])[:10]]
+            if not left_top:
+                left_top = list((retrieval_diagnostics.get(left, {}) or {}).get("top10_docids") or [])
+            if not right_top:
+                right_top = list((retrieval_diagnostics.get(right, {}) or {}).get("top10_docids") or [])
+            if left_top == right_top:
+                top10_same += 1
+        summary[f"{left}__vs__{right}"] = {
+            "shared_queries": shared,
+            "identical_retrieval_text_rate": (text_same / shared) if shared else None,
+            "identical_top10_rate": (top10_same / shared) if shared else None,
+        }
+    return summary
+
+
+def _concatenation_rescue_summary(
+    records: list[dict[str, object]],
+    pairs: list[tuple[str, str]],
+) -> dict[str, dict[str, float | None]]:
+    summary: dict[str, dict[str, float | None]] = {}
+    for generated_only, query_plus_generated in pairs:
+        deltas = []
+        for record in records:
+            rankings = record.get("rankings", {})
+            qrels = record.get("qrels", {})
+            if generated_only not in rankings or query_plus_generated not in rankings:
+                continue
+            generated_score = per_query_metrics(rankings[generated_only], qrels).get("ndcg@10", 0.0)
+            anchored_score = per_query_metrics(rankings[query_plus_generated], qrels).get("ndcg@10", 0.0)
+            deltas.append(anchored_score - generated_score)
+        summary[f"{generated_only}__to__{query_plus_generated}"] = {
+            "avg_ndcg@10_delta": (sum(deltas) / len(deltas)) if deltas else None,
+            "num_queries": len(deltas),
+        }
+    return summary
+
+
+def _query_dominance_summary(records: list[dict[str, object]]) -> dict[str, float | None]:
+    method_names = [
+        "concat_query_wrong_answer",
+        "query_repeated",
+        "query_repeated_length_matched",
+        "query_plus_shuffled_expected",
+        "query_plus_neutral_filler",
+        "neutral_filler_plus_query",
+    ]
+    summary: dict[str, float | None] = {}
+    for method_name in method_names:
+        deltas = []
+        for record in records:
+            rankings = record.get("rankings", {})
+            qrels = record.get("qrels", {})
+            if "query_only" not in rankings or method_name not in rankings:
+                continue
+            baseline = per_query_metrics(rankings["query_only"], qrels).get("ndcg@10", 0.0)
+            method_score = per_query_metrics(rankings[method_name], qrels).get("ndcg@10", 0.0)
+            deltas.append(method_score - baseline)
+        summary[f"{method_name}_delta_vs_query_only_ndcg@10"] = (sum(deltas) / len(deltas)) if deltas else None
+    return summary
+
+
+def _sample_retrieval_audit(
+    records: list[dict[str, object]],
+    audit_methods: list[str],
+    sample_size: int,
+    seed: int,
+) -> list[dict[str, object]]:
+    if not records:
+        return []
+    rng = random.Random(seed)
+    sampled_records = list(records)
+    rng.shuffle(sampled_records)
+    sampled_records = sampled_records[: min(sample_size, len(sampled_records))]
+    audit_rows: list[dict[str, object]] = []
+    for record in sampled_records:
+        diagnostics = record.get("retrieval_diagnostics", {})
+        generation = record.get("generation", {})
+        for method_name in audit_methods:
+            if method_name not in diagnostics:
+                continue
+            diag = diagnostics[method_name]
+            audit_rows.append(
+                {
+                    "query_id": record.get("query_id"),
+                    "original_query": diag.get("original_query"),
+                    "counterfactual_query": diag.get("counterfactual_query"),
+                    "method": method_name,
+                    "generated_text": _generated_text_for_audit(method_name, generation),
+                    "final_retrieval_text": diag.get("final_retrieval_text"),
+                    "retriever_input_hash": diag.get("retriever_input_hash"),
+                    "top10_docids": diag.get("top10_docids"),
+                    "relevant_docids": diag.get("relevant_docids"),
+                }
+            )
+    return audit_rows
+
+
+def _generated_text_for_audit(method_name: str, generation: Mapping[str, object]) -> str | None:
+    if method_name.startswith("fawe_raw_expected") or method_name in {
+        "raw_expected_answer_only",
+        "concat_query_raw_expected",
+        "raw_expected_then_query",
+        "query_plus_shuffled_expected",
+    }:
+        return str(generation.get("expected_answer") or "")
+    if method_name.startswith("fawe_masked_expected") or method_name in {
+        "masked_expected_answer_only",
+        "concat_query_masked_expected",
+    }:
+        return str(generation.get("masked_expected_answer") or "")
+    if method_name in {
+        "query2doc_concat",
+        "fawe_query2doc_beta0p25",
+    }:
+        return str(generation.get("query2doc_document") or "")
+    if method_name in {
+        "concat_query_answer_candidate_constrained_template",
+        "fawe_answer_constrained_beta0p5",
+        "fawe_safe_adaptive_beta",
+    }:
+        parsed = generation.get("answer_candidate_template_parsed", {})
+        return str(parsed.get("retrieval_text") or generation.get("answer_candidate_template") or "")
+    controls = generation.get("controls", {})
+    if method_name in controls:
+        return str(controls.get(method_name) or "")
+    return None
+
+
+def _dense_position_audit(records: list[dict[str, object]]) -> dict[str, float | None]:
+    pairs = [
+        ("concat_query_raw_expected", "raw_expected_then_query"),
+        ("query_plus_neutral_filler", "neutral_filler_plus_query"),
+    ]
+    summary: dict[str, float | None] = {}
+    for first, second in pairs:
+        deltas = []
+        for record in records:
+            rankings = record.get("rankings", {})
+            qrels = record.get("qrels", {})
+            if first not in rankings or second not in rankings:
+                continue
+            first_score = per_query_metrics(rankings[first], qrels).get("ndcg@10", 0.0)
+            second_score = per_query_metrics(rankings[second], qrels).get("ndcg@10", 0.0)
+            deltas.append(first_score - second_score)
+        summary[f"{first}__minus__{second}_avg_ndcg@10"] = (sum(deltas) / len(deltas)) if deltas else None
+    return summary
 
 
 def _build_corpus_steered_expansion(
@@ -1214,6 +1367,544 @@ def _generate_query_bundle(
     }
 
 
+def _process_query(
+    args: argparse.Namespace,
+    dataset,
+    query,
+    query_index: int,
+    query_context: Mapping[str, object],
+    generation_bundle: Mapping[str, object],
+    retriever,
+    doc_map: Mapping[str, Document],
+    answer_rrf_weights: list[float],
+    fawe_betas: list[float],
+    run_method_names: Iterable[str],
+    checkpoint_context: Mapping[str, object],
+) -> dict[str, object]:
+    relevant_docs = [doc_map[doc_id] for doc_id in dataset.qrels.get(query.query_id, {}) if doc_id in doc_map]
+    query_rank = query_context["query_rank"]
+    cf_prompt_support = query_context["cf_prompt_support"]
+    expected = str(generation_bundle["expected_answer"])
+    expected_artifact = generation_bundle["expected_answer_artifact"]
+    masked = str(generation_bundle["masked_expected_answer"])
+    masked_artifact = generation_bundle["masked_expected_answer_artifact"]
+    hyde_doc = str(generation_bundle["hyde_document"])
+    hyde_artifact = generation_bundle["hyde_document_artifact"]
+    query2doc_doc = str(generation_bundle["query2doc_document"])
+    query2doc_artifact = generation_bundle["query2doc_document_artifact"]
+    relevance_feedback = str(generation_bundle["generative_relevance_feedback"])
+    feedback_artifact = generation_bundle["generative_relevance_feedback_artifact"]
+    template_text = str(generation_bundle["answer_candidate_template"])
+    template_artifact = generation_bundle["answer_candidate_template_artifact"]
+    template_payload = parse_answer_candidate_template(template_text, query.text)
+    template_validation = validate_answer_candidate_template(query.text, template_payload)
+    template_retrieval_text = str(template_payload.get("retrieval_text") or query.text)
+    cf_prompt_text = str(generation_bundle["cf_prompt_query_expansion"])
+    cf_prompt_artifact = generation_bundle["cf_prompt_query_expansion_artifact"]
+    cf_prompt_payload = parse_counterfactual_prompt_query_expansion(
+        cf_prompt_text,
+        query.text,
+        build_counterfactual_prompt_payload(query.text),
+    )
+    cf_prompt_queries = list(cf_prompt_payload.get("queries") or [])
+    cf_prompt_joined = "\n".join(cf_prompt_queries).strip()
+
+    oracle_masked = remove_gold_from_text(expected, list(query.all_answer_strings))
+    posthoc_gold_removed = remove_gold_from_text(expected, list(query.all_answer_strings))
+    random_masked = random_span_mask_answer(expected, query.text, seed=args.counterfactual_seed + query_index)
+    entity_only_masked = entity_only_mask_answer(expected, query.text)
+    generic_masked = generic_mask_answer(masked)
+    length_matched_filler = length_matched_neutral_filler(query.text, expected)
+    wrong_answer_candidate = _wrong_answer_candidate(dataset, query_index)
+    wrong_answer_only = wrong_answer_candidate
+    wrong_answer_injection = f"{query.text}\n{wrong_answer_candidate}".strip()
+    query_repeated = f"{query.text}\n{query.text}".strip()
+    query_repeated_length_matched = _repeat_query_to_match_text(query.text, expected)
+    shuffled_expected = _shuffle_text_tokens(expected, seed=args.audit_seed + query_index)
+    query_plus_shuffled_expected = f"{query.text}\n{shuffled_expected}".strip()
+    query_plus_neutral_filler = length_matched_filler
+    neutral_filler_plus_query = _prepend_filler_to_query(query.text, expected)
+    raw_expected_then_query = f"{expected}\n{query.text}".strip()
+
+    cf_prompt_bundle = _cf_prompt_subquery_bundle(
+        query_text=query.text,
+        query_rank=query_rank,
+        cf_prompt_payload=cf_prompt_payload,
+        retriever=retriever,
+        doc_map=doc_map,
+        top_k=args.top_k,
+        support_terms=cf_prompt_support["support_terms"],
+    )
+    cf_prompt_selected_queries = list(cf_prompt_bundle["selected_queries"])
+    cf_prompt_selected_weights = list(cf_prompt_bundle["selected_weights"])
+    cf_prompt_selected_joined = "\n".join(cf_prompt_selected_queries).strip()
+    corpus_steered_text = str(query_context["corpus_steered_text"])
+    corpus_steered_short_text = str(query_context["corpus_steered_short_text"])
+
+    method_queries = {
+        "hyde_doc_only": hyde_doc,
+        "query2doc_concat": f"{query.text}\n{query2doc_doc}",
+        "generative_relevance_feedback_concat": f"{query.text}\n{relevance_feedback}",
+        "corpus_steered_expansion_concat": f"{query.text}\n{corpus_steered_text}",
+        "corpus_steered_short_concat": f"{query.text}\n{corpus_steered_short_text}",
+        "raw_expected_answer_only": expected,
+        "concat_query_raw_expected": f"{query.text}\n{expected}",
+        "masked_expected_answer_only": masked,
+        "concat_query_masked_expected": f"{query.text}\n{masked}",
+        "answer_candidate_constrained_template_only": template_retrieval_text,
+        "concat_query_answer_candidate_constrained_template": f"{query.text}\n{template_retrieval_text}",
+        "gold_answer_only": " ".join(query.answers) if query.answers else expected,
+        "oracle_answer_masked": oracle_masked,
+        "concat_query_oracle_answer_masked": f"{query.text}\n{oracle_masked}",
+        "post_hoc_gold_removed_expected_answer": posthoc_gold_removed,
+        "concat_query_post_hoc_gold_removed_expected": f"{query.text}\n{posthoc_gold_removed}",
+        "random_span_masking": random_masked,
+        "concat_query_random_span_masking": f"{query.text}\n{random_masked}",
+        "entity_only_masking": entity_only_masked,
+        "concat_query_entity_only_masking": f"{query.text}\n{entity_only_masked}",
+        "generic_mask_slot": generic_masked,
+        "concat_query_generic_mask_slot": f"{query.text}\n{generic_masked}",
+        "length_matched_neutral_filler": length_matched_filler,
+        "wrong_answer_only": wrong_answer_only,
+        "concat_query_wrong_answer": wrong_answer_injection,
+        "wrong_answer_injection": wrong_answer_injection,
+        "query_repeated": query_repeated,
+        "query_repeated_length_matched": query_repeated_length_matched,
+        "query_plus_shuffled_expected": query_plus_shuffled_expected,
+        "query_plus_neutral_filler": query_plus_neutral_filler,
+        "neutral_filler_plus_query": neutral_filler_plus_query,
+        "raw_expected_then_query": raw_expected_then_query,
+    }
+    method_queries["query_only"] = query.text
+
+    rankings = {"query_only": query_rank}
+    for method_name, method_query in method_queries.items():
+        if method_name == "query_only":
+            continue
+        rankings[method_name] = retriever.search(method_query, top_k=args.top_k)
+    rankings["cf_prompt_query_expansion_rrf"] = weighted_reciprocal_rank_fusion(
+        [query_rank, *cf_prompt_bundle["rankings"]] if cf_prompt_bundle["rankings"] else [query_rank],
+        [1.0, *cf_prompt_selected_weights] if cf_prompt_bundle["rankings"] else [1.0],
+        top_k=args.top_k,
+    )
+    rankings["dual_query_raw_expected_rrf"] = reciprocal_rank_fusion([query_rank, rankings["raw_expected_answer_only"]], top_k=args.top_k)
+    rankings["dual_query_masked_expected_rrf"] = reciprocal_rank_fusion([query_rank, rankings["masked_expected_answer_only"]], top_k=args.top_k)
+    rankings["dual_query_answer_candidate_constrained_template_rrf"] = reciprocal_rank_fusion(
+        [query_rank, rankings["answer_candidate_constrained_template_only"]],
+        top_k=args.top_k,
+    )
+    rankings["rrf_query_masked_expected"] = rankings["dual_query_masked_expected_rrf"]
+    rankings["rrf_query_answer_constrained"] = rankings["dual_query_answer_candidate_constrained_template_rrf"]
+    rankings["rrf_query_wrong_answer"] = reciprocal_rank_fusion(
+        [query_rank, rankings["wrong_answer_only"]],
+        top_k=args.top_k,
+    )
+    rankings["rrf_query_corpus_steered_short"] = reciprocal_rank_fusion(
+        [query_rank, rankings["corpus_steered_short_concat"]],
+        top_k=args.top_k,
+    )
+    rankings["safe_rrf_v0"] = weighted_reciprocal_rank_fusion(
+        [
+            query_rank,
+            rankings["generative_relevance_feedback_concat"],
+            rankings["query2doc_concat"],
+            rankings["concat_query_answer_candidate_constrained_template"],
+        ],
+        [
+            SAFE_RRF_V0_WEIGHTS["query_only"],
+            SAFE_RRF_V0_WEIGHTS["generative_relevance_feedback_concat"],
+            SAFE_RRF_V0_WEIGHTS["query2doc_concat"],
+            SAFE_RRF_V0_WEIGHTS["concat_query_answer_candidate_constrained_template"],
+        ],
+        top_k=args.top_k,
+    )
+    for weight in answer_rrf_weights:
+        suffix = _weight_suffix(weight)
+        rankings[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = weighted_reciprocal_rank_fusion(
+            [query_rank, rankings["raw_expected_answer_only"]],
+            [1.0, weight],
+            top_k=args.top_k,
+        )
+        rankings[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = weighted_reciprocal_rank_fusion(
+            [query_rank, rankings["masked_expected_answer_only"]],
+            [1.0, weight],
+            top_k=args.top_k,
+        )
+        rankings[f"weighted_rrf_query_answer_constrained_w{suffix}"] = weighted_reciprocal_rank_fusion(
+            [query_rank, rankings["answer_candidate_constrained_template_only"]],
+            [1.0, weight],
+            top_k=args.top_k,
+        )
+    named_fawe_betas = _resolve_named_fawe_betas(fawe_betas)
+    rankings["fawe_raw_expected_beta0p25"] = _fielded_anchor_weighted_search(
+        retriever=retriever,
+        query_text=query.text,
+        expansion_text=expected,
+        beta=named_fawe_betas["raw_expected"],
+        top_k=args.top_k,
+        doc_count=len(dataset.corpus),
+    )
+    rankings["fawe_masked_expected_beta0p25"] = _fielded_anchor_weighted_search(
+        retriever=retriever,
+        query_text=query.text,
+        expansion_text=masked,
+        beta=named_fawe_betas["masked_expected"],
+        top_k=args.top_k,
+        doc_count=len(dataset.corpus),
+    )
+    rankings["fawe_answer_constrained_beta0p5"] = _fielded_anchor_weighted_search(
+        retriever=retriever,
+        query_text=query.text,
+        expansion_text=template_retrieval_text,
+        beta=named_fawe_betas["answer_constrained"],
+        top_k=args.top_k,
+        doc_count=len(dataset.corpus),
+    )
+    rankings["fawe_query2doc_beta0p25"] = _fielded_anchor_weighted_search(
+        retriever=retriever,
+        query_text=query.text,
+        expansion_text=query2doc_doc,
+        beta=named_fawe_betas["query2doc"],
+        top_k=args.top_k,
+        doc_count=len(dataset.corpus),
+    )
+
+    base_features = generation_features(query, expected, masked, hyde_doc)
+    generated_texts_for_leakage = {
+        "raw_expected_answer_only": expected,
+        "concat_query_raw_expected": f"{query.text}\n{expected}",
+        "masked_expected_answer_only": masked,
+        "concat_query_masked_expected": f"{query.text}\n{masked}",
+        "hyde_doc_only": hyde_doc,
+        "query2doc_concat": query2doc_doc,
+        "generative_relevance_feedback_concat": relevance_feedback,
+        "corpus_steered_expansion_concat": corpus_steered_text,
+        "corpus_steered_short_concat": corpus_steered_short_text,
+        "answer_candidate_constrained_template_only": template_retrieval_text,
+        "concat_query_answer_candidate_constrained_template": f"{query.text}\n{template_retrieval_text}",
+        "oracle_answer_masked": oracle_masked,
+        "concat_query_oracle_answer_masked": f"{query.text}\n{oracle_masked}",
+        "post_hoc_gold_removed_expected_answer": posthoc_gold_removed,
+        "concat_query_post_hoc_gold_removed_expected": f"{query.text}\n{posthoc_gold_removed}",
+        "random_span_masking": random_masked,
+        "concat_query_random_span_masking": f"{query.text}\n{random_masked}",
+        "entity_only_masking": entity_only_masked,
+        "concat_query_entity_only_masking": f"{query.text}\n{entity_only_masked}",
+        "generic_mask_slot": generic_masked,
+        "concat_query_generic_mask_slot": f"{query.text}\n{generic_masked}",
+        "length_matched_neutral_filler": length_matched_filler,
+        "wrong_answer_only": wrong_answer_only,
+        "concat_query_wrong_answer": wrong_answer_injection,
+        "wrong_answer_injection": wrong_answer_injection,
+        "query_repeated": query_repeated,
+        "query_repeated_length_matched": query_repeated_length_matched,
+        "query_plus_shuffled_expected": query_plus_shuffled_expected,
+        "query_plus_neutral_filler": query_plus_neutral_filler,
+        "neutral_filler_plus_query": neutral_filler_plus_query,
+        "raw_expected_then_query": raw_expected_then_query,
+        "fawe_raw_expected_beta0p25": expected,
+        "fawe_masked_expected_beta0p25": masked,
+        "fawe_answer_constrained_beta0p5": template_retrieval_text,
+        "fawe_query2doc_beta0p25": query2doc_doc,
+        "fawe_safe_adaptive_beta": template_retrieval_text,
+        "cf_prompt_query_expansion_rrf": cf_prompt_selected_joined or cf_prompt_joined,
+    }
+    leakage_scores = score_generation_methods(query, generated_texts_for_leakage, relevant_docs)
+    leakage_labels = {
+        method_name: {
+            "bucket": leakage_bucket_name(score),
+            "is_leakage_positive": leakage_bucket_name(score) != "leakage_negative",
+            "has_exact_answer_leakage": bool(score.get("exact_answer_leakage")),
+            "has_alias_answer_leakage": bool(score.get("alias_answer_leakage")),
+            "has_candidate_injection": bool(score.get("answer_candidate_leakage")),
+            "has_wrong_prior_injection": bool(score.get("wrong_prior_candidates")),
+            "has_unsupported_injection": bool(score.get("unsupported_candidates")),
+        }
+        for method_name, score in leakage_scores.items()
+    }
+    features_entry = {
+        **base_features,
+        "leakage_bucket": leakage_bucket_name(leakage_scores["raw_expected_answer_only"]),
+        "raw_expected_answer_only": leakage_scores["raw_expected_answer_only"],
+    }
+    route_reliability = _route_reliability_bundle(
+        query_text=query.text,
+        query_rank=query_rank,
+        route_texts={
+            "generative_relevance_feedback_concat": relevance_feedback,
+            "query2doc_concat": query2doc_doc,
+            "concat_query_answer_candidate_constrained_template": template_retrieval_text,
+        },
+        route_rankings={
+            "generative_relevance_feedback_concat": rankings["generative_relevance_feedback_concat"],
+            "query2doc_concat": rankings["query2doc_concat"],
+            "concat_query_answer_candidate_constrained_template": rankings["concat_query_answer_candidate_constrained_template"],
+        },
+        doc_map=doc_map,
+        template_validation=template_validation,
+    )
+    safe_rrf_v1_weights = route_reliability["weights"]
+    fawe_safe_beta = _safe_adaptive_fawe_beta(route_reliability["features"], template_validation)
+    rankings["fawe_safe_adaptive_beta"] = _fielded_anchor_weighted_search(
+        retriever=retriever,
+        query_text=query.text,
+        expansion_text=template_retrieval_text,
+        beta=fawe_safe_beta,
+        top_k=args.top_k,
+        doc_count=len(dataset.corpus),
+    )
+    rankings["safe_rrf_v1"] = weighted_reciprocal_rank_fusion(
+        [
+            query_rank,
+            rankings["generative_relevance_feedback_concat"],
+            rankings["query2doc_concat"],
+            rankings["concat_query_answer_candidate_constrained_template"],
+        ],
+        [
+            safe_rrf_v1_weights["query_only"],
+            safe_rrf_v1_weights["generative_relevance_feedback_concat"],
+            safe_rrf_v1_weights["query2doc_concat"],
+            safe_rrf_v1_weights["concat_query_answer_candidate_constrained_template"],
+        ],
+        top_k=args.top_k,
+    )
+    retrieval_strings = dict(method_queries)
+    retrieval_strings["cf_prompt_query_expansion_rrf"] = cf_prompt_selected_joined or cf_prompt_joined
+    retrieval_strings["fawe_raw_expected_beta0p25"] = _format_fawe_retrieval_text(query.text, expected, named_fawe_betas["raw_expected"])
+    retrieval_strings["fawe_masked_expected_beta0p25"] = _format_fawe_retrieval_text(query.text, masked, named_fawe_betas["masked_expected"])
+    retrieval_strings["fawe_answer_constrained_beta0p5"] = _format_fawe_retrieval_text(
+        query.text,
+        template_retrieval_text,
+        named_fawe_betas["answer_constrained"],
+    )
+    retrieval_strings["fawe_query2doc_beta0p25"] = _format_fawe_retrieval_text(query.text, query2doc_doc, named_fawe_betas["query2doc"])
+    retrieval_strings["fawe_safe_adaptive_beta"] = _format_fawe_retrieval_text(query.text, template_retrieval_text, fawe_safe_beta)
+    retrieval_specs = _build_retrieval_specs(
+        query_text=query.text,
+        method_queries=method_queries,
+        answer_rrf_weights=answer_rrf_weights,
+        named_fawe_betas=named_fawe_betas,
+        fawe_safe_beta=fawe_safe_beta,
+        fawe_expansions={
+            "raw_expected": expected,
+            "masked_expected": masked,
+            "answer_constrained": template_retrieval_text,
+            "query2doc": query2doc_doc,
+        },
+        cf_prompt_queries=cf_prompt_queries,
+        safe_rrf_v1_weights=safe_rrf_v1_weights,
+        cf_prompt_bundle=cf_prompt_bundle,
+    )
+    wrong_answer_verification = {
+        "candidate": wrong_answer_candidate,
+        "candidate_present_in_wrong_answer_only": _contains_text(wrong_answer_only, wrong_answer_candidate),
+        "candidate_present_in_concat_query_wrong_answer": _contains_text(wrong_answer_injection, wrong_answer_candidate),
+        "concat_query_wrong_answer_differs_from_query_only": _normalize_text(wrong_answer_injection) != _normalize_text(query.text),
+    }
+    retrieval_diagnostics = _build_retrieval_diagnostics(
+        query_id=query.query_id,
+        original_query_text=str(query.original_text or query.text),
+        query_text=query.text,
+        retrieval_strings=retrieval_strings,
+        rankings=rankings,
+        qrels=dataset.qrels.get(query.query_id, {}),
+        included_methods=rankings.keys(),
+    )
+    generation = {
+        "query": query.text,
+        "original_query": str(query.original_text or query.text),
+        "answers": list(query.answers),
+        "answer_aliases": list(query.answer_aliases),
+        "expected_answer": expected,
+        "masked_expected_answer": masked,
+        "hyde_document": hyde_doc,
+        "query2doc_document": query2doc_doc,
+        "generative_relevance_feedback": relevance_feedback,
+        "corpus_steered_expansion": corpus_steered_text,
+        "corpus_steered_short_expansion": corpus_steered_short_text,
+        "answer_candidate_template": template_text,
+        "answer_candidate_template_parsed": template_payload,
+        "answer_candidate_template_validation": template_validation,
+        "cf_prompt_query_expansion": cf_prompt_payload,
+        "cf_prompt_query_expansion_selection": {
+            "support_context": cf_prompt_support,
+            "generation_workers": args.generation_workers,
+            "selected_queries": cf_prompt_selected_queries,
+            "selected_weights": cf_prompt_selected_weights,
+            "candidates": cf_prompt_bundle["candidates"],
+        },
+        "retrieval_strings": retrieval_strings,
+        "retrieval_specs": retrieval_specs,
+        "adaptive_fusion": {
+            "safe_rrf_v0_weights": SAFE_RRF_V0_WEIGHTS,
+            "safe_rrf_v1": route_reliability,
+            "fawe_named_betas": named_fawe_betas,
+            "fawe_safe_adaptive_beta": fawe_safe_beta,
+        },
+        "controls": {
+            "oracle_answer_masked": oracle_masked,
+            "post_hoc_gold_removed_expected_answer": posthoc_gold_removed,
+            "random_span_masking": random_masked,
+            "entity_only_masking": entity_only_masked,
+            "generic_mask_slot": generic_masked,
+            "length_matched_neutral_filler": length_matched_filler,
+            "wrong_answer_only": wrong_answer_only,
+            "concat_query_wrong_answer": wrong_answer_injection,
+            "wrong_answer_injection": wrong_answer_injection,
+            "query_repeated": query_repeated,
+            "query_repeated_length_matched": query_repeated_length_matched,
+            "query_plus_shuffled_expected": query_plus_shuffled_expected,
+            "query_plus_neutral_filler": query_plus_neutral_filler,
+            "neutral_filler_plus_query": neutral_filler_plus_query,
+            "raw_expected_then_query": raw_expected_then_query,
+        },
+        "integrity": {
+            "wrong_answer_verification": wrong_answer_verification,
+        },
+        "retrieval_diagnostics": retrieval_diagnostics,
+        "artifacts": {
+            "expected_answer": expected_artifact,
+            "masked_expected_answer": masked_artifact,
+            "hyde_document": hyde_artifact,
+            "query2doc_document": query2doc_artifact,
+            "generative_relevance_feedback": feedback_artifact,
+            "answer_candidate_template": template_artifact,
+            "cf_prompt_query_expansion": cf_prompt_artifact,
+        },
+        "features": base_features,
+        "leakage": leakage_scores,
+        "leakage_labels": leakage_labels,
+    }
+    record = {
+        "query_id": query.query_id,
+        "query": query.text,
+        "original_query": str(query.original_text or query.text),
+        "checkpoint_context": dict(checkpoint_context),
+        "answers": list(query.answers),
+        "answer_aliases": list(query.answer_aliases),
+        "generation": generation,
+        "leakage_labels": leakage_labels,
+        "integrity": {
+            "wrong_answer_verification": wrong_answer_verification,
+        },
+        "retrieval_strings": retrieval_strings,
+        "retrieval_specs": retrieval_specs,
+        "retrieval_diagnostics": retrieval_diagnostics,
+        "rankings": {name: rankings[name] for name in run_method_names if name in rankings},
+        "qrels": dataset.qrels.get(query.query_id, {}),
+    }
+    return {
+        "record": record,
+        "generation": generation,
+        "features_by_query": features_entry,
+        "leakage_scores": leakage_scores,
+    }
+
+
+def _load_checkpoint_records(
+    records_path: Path,
+    dataset,
+    required_methods: Iterable[str],
+    checkpoint_context: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if not records_path.exists():
+        return []
+    dataset_queries = {query.query_id: query for query in dataset.queries}
+    required_method_set = set(required_methods)
+    by_query_id: dict[str, dict[str, object]] = {}
+    with records_path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            query_id = str(record.get("query_id") or "")
+            query = dataset_queries.get(query_id)
+            if query is None:
+                continue
+            if not _checkpoint_record_is_compatible(record, query, required_method_set, checkpoint_context):
+                continue
+            by_query_id[query_id] = record
+    return [by_query_id[query.query_id] for query in dataset.queries if query.query_id in by_query_id]
+
+
+def _checkpoint_record_is_compatible(
+    record: Mapping[str, object],
+    query,
+    required_methods: set[str],
+    checkpoint_context: Mapping[str, object],
+) -> bool:
+    record_context = record.get("checkpoint_context", {})
+    if not isinstance(record_context, Mapping):
+        return False
+    for key, value in checkpoint_context.items():
+        if record_context.get(key) != value:
+            return False
+    stored_query = str(record.get("query") or "")
+    if stored_query != query.text:
+        return False
+    rankings = record.get("rankings")
+    if not isinstance(rankings, Mapping):
+        return False
+    return required_methods.issubset(set(rankings.keys()))
+
+
+def _restore_checkpoint_state(
+    checkpoint_records: list[dict[str, object]],
+    runs: Mapping[str, Dict[str, RankedList]],
+    dataset,
+) -> dict[str, object]:
+    features_by_query: dict[str, dict[str, object]] = {}
+    generations: dict[str, dict[str, object]] = {}
+    leakage_by_method: dict[str, list[dict[str, object]]] = {name: [] for name in runs}
+    per_query_method_metrics: dict[str, dict[str, dict[str, float]]] = {name: {} for name in runs}
+    completed_query_ids: list[str] = []
+    for record in checkpoint_records:
+        query_id = str(record["query_id"])
+        completed_query_ids.append(query_id)
+        generation = record.get("generation", {})
+        if isinstance(generation, Mapping):
+            generations[query_id] = dict(generation)
+            base_features = dict(generation.get("features", {}))
+            raw_expected_leakage = dict((generation.get("leakage") or {}).get("raw_expected_answer_only", {}))
+            if base_features or raw_expected_leakage:
+                features_by_query[query_id] = {
+                    **base_features,
+                    "leakage_bucket": leakage_bucket_name(raw_expected_leakage) if raw_expected_leakage else None,
+                    "raw_expected_answer_only": raw_expected_leakage,
+                }
+            for method_name, score in (generation.get("leakage") or {}).items():
+                if method_name in leakage_by_method and isinstance(score, Mapping):
+                    leakage_by_method[method_name].append(dict(score))
+        rankings = record.get("rankings", {})
+        for run_name in runs:
+            ranking = rankings.get(run_name)
+            if ranking is None:
+                continue
+            runs[run_name][query_id] = ranking
+            per_query_method_metrics[run_name][query_id] = per_query_metrics(
+                ranking,
+                dataset.qrels.get(query_id, {}),
+            )
+    return {
+        "records": checkpoint_records,
+        "features_by_query": features_by_query,
+        "generations": generations,
+        "leakage_by_method": leakage_by_method,
+        "per_query_method_metrics": per_query_method_metrics,
+        "completed_query_ids": completed_query_ids,
+    }
+
+
+def _append_checkpoint_record(handle, record: Mapping[str, object]) -> None:
+    handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
 def _compute_primary_comparisons(
     dataset,
     per_query_method_metrics: Mapping[str, Mapping[str, Mapping[str, float]]],
@@ -1285,6 +1976,9 @@ def _build_retrieval_specs(
     query_text: str,
     method_queries: Mapping[str, str],
     answer_rrf_weights: list[float],
+    named_fawe_betas: Mapping[str, float],
+    fawe_safe_beta: float,
+    fawe_expansions: Mapping[str, str],
     cf_prompt_queries: list[str],
     safe_rrf_v1_weights: Mapping[str, float],
     cf_prompt_bundle: Mapping[str, object],
@@ -1352,6 +2046,37 @@ def _build_retrieval_specs(
             "cf_prompt_queries": cf_prompt_queries,
             "selected_cf_prompt_queries": list(cf_prompt_bundle.get("selected_queries") or []),
             "selected_cf_prompt_roles": list(cf_prompt_bundle.get("selected_roles") or []),
+        },
+    }
+    specs["fawe_raw_expected_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": named_fawe_betas["raw_expected"],
+        "routes": {"query_only": query_text, "raw_expected_answer_only": fawe_expansions["raw_expected"]},
+    }
+    specs["fawe_masked_expected_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": named_fawe_betas["masked_expected"],
+        "routes": {"query_only": query_text, "masked_expected_answer_only": fawe_expansions["masked_expected"]},
+    }
+    specs["fawe_answer_constrained_beta0p5"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": named_fawe_betas["answer_constrained"],
+        "routes": {
+            "query_only": query_text,
+            "answer_candidate_constrained_template_only": fawe_expansions["answer_constrained"],
+        },
+    }
+    specs["fawe_query2doc_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": named_fawe_betas["query2doc"],
+        "routes": {"query_only": query_text, "query2doc_document": fawe_expansions["query2doc"]},
+    }
+    specs["fawe_safe_adaptive_beta"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": fawe_safe_beta,
+        "routes": {
+            "query_only": query_text,
+            "answer_candidate_constrained_template_only": fawe_expansions["answer_constrained"],
         },
     }
     for weight in answer_rrf_weights:

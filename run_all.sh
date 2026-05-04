@@ -18,6 +18,10 @@ RUN_TAG="${RUN_TAG:-}"
 OUTPUT_DIR="${OUTPUT_DIR:-outputs}"
 HF_CACHE_DIR="${HF_CACHE_DIR:-${OUTPUT_DIR}/hf_cache}"
 EMBEDDING_CACHE_DIR="${EMBEDDING_CACHE_DIR:-${OUTPUT_DIR}/embeddings}"
+METHOD_PROFILE="${METHOD_PROFILE:-main}"
+FAWE_BETAS="${FAWE_BETAS:-0.25,0.5}"
+AUDIT_SAMPLE_SIZE="${AUDIT_SAMPLE_SIZE:-20}"
+FORCE_RERUN="${FORCE_RERUN:-0}"
 
 if [ "$FULL_CORPUS" = "1" ] && [ -z "$RUN_TAG" ]; then
     RUN_TAG="full"
@@ -40,15 +44,21 @@ for ds in "${datasets[@]}"; do
             fi
             
             cache_file="${OUTPUT_DIR}/${out_prefix}_cache.json"
-            records_file="${OUTPUT_DIR}/${out_prefix}_records.jsonl"
             
             if [ "$ret" == "bm25" ]; then
                 run_file="${OUTPUT_DIR}/${out_prefix}_run.json"
                 log_file="${OUTPUT_DIR}/${out_prefix}.log"
+                records_file="${OUTPUT_DIR}/${out_prefix}_records.jsonl"
             else
                 run_file="${OUTPUT_DIR}/${out_prefix}_dense_run.json"
                 log_file="${OUTPUT_DIR}/${out_prefix}_dense.log"
                 embedding_cache="${EMBEDDING_CACHE_DIR}/${out_prefix}_bge"
+                records_file="${OUTPUT_DIR}/${out_prefix}_dense_records.jsonl"
+            fi
+
+            if [ "$FORCE_RERUN" != "1" ] && [ -f "$run_file" ]; then
+                echo "Skipping $ds $ret ${cf:-public} because $run_file already exists"
+                continue
             fi
             
             echo "Running $ds $ret ${cf:-public} (N=$N, model=$MODEL, workers=$GENERATION_WORKERS, full_corpus=$FULL_CORPUS)..."
@@ -63,6 +73,9 @@ for ds in "${datasets[@]}"; do
                 --generation-cache "$cache_file"
                 --generation-workers "$GENERATION_WORKERS"
                 --retriever "$ret"
+                --method-profile "$METHOD_PROFILE"
+                --fawe-betas "$FAWE_BETAS"
+                --audit-sample-size "$AUDIT_SAMPLE_SIZE"
                 --output "$run_file"
                 --records-output "$records_file"
             )
