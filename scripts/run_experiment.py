@@ -29,7 +29,12 @@ from expected_answer_rag.analysis import (
     summarize_method_leakage,
 )
 from expected_answer_rag.cache import JsonCache
-from expected_answer_rag.counterfactual import build_entity_counterfactual_dataset, export_counterfactual_artifacts
+from expected_answer_rag.counterfactual import (
+    build_entity_counterfactual_dataset,
+    export_counterfactual_artifacts,
+    load_counterfactual_artifacts,
+    resolve_counterfactual_artifact_dir,
+)
 from expected_answer_rag.datasets import Document, export_local_dataset, load_dataset
 from expected_answer_rag.fusion import reciprocal_rank_fusion, weighted_reciprocal_rank_fusion
 from expected_answer_rag.generators import (
@@ -210,6 +215,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--counterfactual-alias-style", choices=["natural", "coded"], default="natural")
     parser.add_argument("--counterfactual-seed", type=int, default=13)
     parser.add_argument("--counterfactual-export-dir", default=None)
+    parser.add_argument("--counterfactual-artifact-root", default=None)
     parser.add_argument("--retriever", choices=["bm25", "dense"], default="bm25")
     parser.add_argument("--embedding-model", default="BAAI/bge-base-en-v1.5")
     parser.add_argument("--embedding-batch-size", type=int, default=64)
@@ -261,6 +267,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    counterfactual_artifact_dir: Path | None = None
     print(
         f"Phase 0/4: Loading dataset {args.dataset} "
         f"(max_queries={args.max_queries}, max_corpus={args.max_corpus})"
@@ -273,17 +280,37 @@ def main() -> None:
         query_metadata_path=args.query_metadata,
     )
     if args.counterfactual != "none":
-        print(
-            f"Phase 0.5/4: Building counterfactual dataset "
-            f"(regime={args.counterfactual}, alias_style={args.counterfactual_alias_style})"
-        )
-        counterfactual = build_entity_counterfactual_dataset(
-            dataset,
-            alias_style=args.counterfactual_alias_style,
-            include_values=args.counterfactual == "entity_and_value",
-            seed=args.counterfactual_seed,
-            progress=print,
-        )
+        include_values = args.counterfactual == "entity_and_value"
+        if args.counterfactual_artifact_root:
+            counterfactual_artifact_dir = resolve_counterfactual_artifact_dir(
+                _resolve_path(args.counterfactual_artifact_root),
+                dataset,
+                alias_style=args.counterfactual_alias_style,
+                include_values=include_values,
+                seed=args.counterfactual_seed,
+            )
+        if counterfactual_artifact_dir and (counterfactual_artifact_dir / "manifest.json").exists():
+            print(
+                f"Phase 0.5/4: Reusing counterfactual dataset "
+                f"from {counterfactual_artifact_dir}"
+            )
+            counterfactual = load_counterfactual_artifacts(counterfactual_artifact_dir)
+        else:
+            print(
+                f"Phase 0.5/4: Building counterfactual dataset "
+                f"(regime={args.counterfactual}, alias_style={args.counterfactual_alias_style})"
+            )
+            counterfactual = build_entity_counterfactual_dataset(
+                dataset,
+                alias_style=args.counterfactual_alias_style,
+                include_values=include_values,
+                seed=args.counterfactual_seed,
+                progress=print,
+            )
+            if counterfactual_artifact_dir:
+                export_local_dataset(counterfactual.dataset, counterfactual_artifact_dir)
+                export_counterfactual_artifacts(counterfactual, counterfactual_artifact_dir)
+                print(f"Phase 0.5/4: Cached counterfactual artifact at {counterfactual_artifact_dir}")
         dataset = counterfactual.dataset
         if args.counterfactual_export_dir:
             export_local_dataset(dataset, _resolve_path(args.counterfactual_export_dir))
@@ -476,6 +503,7 @@ def main() -> None:
         "generation_cache_namespace": generator.namespace,
         "counterfactual_regime": args.counterfactual,
         "counterfactual_alias_style": args.counterfactual_alias_style if args.counterfactual != "none" else None,
+        "counterfactual_artifact_dir": str(counterfactual_artifact_dir) if counterfactual_artifact_dir else None,
         "top_k": args.top_k,
         "resume_summary": {
             "checkpoint_records_loaded": len(checkpoint_records),

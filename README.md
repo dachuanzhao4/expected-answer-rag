@@ -163,6 +163,9 @@ This runs:
 - datasets: `nq`, `scifact`, `hotpotqa`
 - retrievers: `bm25`, `dense`
 - regimes: `public`, `entity`, `entity_and_value`
+- `N=100` by default
+- full corpus by default
+- reusable counterfactual artifacts under `outputs/counterfactual_artifacts`
 
 ### 7. Run the matrix with all corpus
 
@@ -170,7 +173,7 @@ This runs:
 FULL_CORPUS=1 GENERATION_WORKERS=4 bash run_all.sh
 ```
 
-This omits `--max-corpus`, appends `_full` to output filenames, and uses multithreaded generation precompute.
+This is now the default behavior. It omits `--max-corpus`, appends `_full` to output filenames, and reuses versioned counterfactual artifacts across BM25 and dense runs.
 
 ### 8. Run the matrix with a custom corpus cap and worker count
 
@@ -183,6 +186,7 @@ Useful environment variables for [run_all.sh](/Users/weiyueli/Desktop/rag/expect
 - `FULL_CORPUS=1` omits `--max-corpus`
 - `MAX_CORPUS=...` overrides the default cap when `FULL_CORPUS` is not set
 - `GENERATION_WORKERS=...` controls threaded generation precompute
+- `COUNTERFACTUAL_ARTIFACT_ROOT=...` chooses where versioned rewritten corpora are cached
 - `RUN_TAG=...` adds a suffix to output filenames to avoid overwriting prior runs
 
 ## New Methods
@@ -258,7 +262,7 @@ PY
 
 ## Counterfactual Dataset Export
 
-To export a renamed local dataset:
+To export a renamed local dataset to an exact directory:
 
 ```bash
 conda run -n rag python scripts/build_counterfactual_dataset.py \
@@ -267,6 +271,16 @@ conda run -n rag python scripts/build_counterfactual_dataset.py \
   --max-corpus 200 \
   --alias-style natural \
   --output-dir outputs/nq_counterfactual_local
+```
+
+To precompute and reuse a versioned artifact automatically:
+
+```bash
+conda run -n rag python scripts/build_counterfactual_dataset.py \
+  --dataset nq \
+  --max-queries 100 \
+  --alias-style natural \
+  --artifact-root outputs/counterfactual_artifacts
 ```
 
 This writes:

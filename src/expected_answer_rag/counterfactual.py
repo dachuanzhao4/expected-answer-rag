@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import re
@@ -7,12 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Mapping
 
-from expected_answer_rag.datasets import Document, Query, RetrievalDataset
+from expected_answer_rag.datasets import Document, Query, RetrievalDataset, load_local_dataset
 from expected_answer_rag.leakage import QUOTED_TITLE_RE, normalize_text
 import spacy
 
 _nlp = None
 ProgressCallback = Callable[[str], None]
+COUNTERFACTUAL_ARTIFACT_VERSION = "v1"
 
 
 def get_nlp():
@@ -83,10 +85,16 @@ def build_entity_counterfactual_dataset(
     metadata = {
         **dict(dataset.metadata),
         "variant": "entity_counterfactual",
+        "counterfactual_regime": "entity_and_value" if include_values else "entity",
         "alias_style": alias_style,
         "include_values": include_values,
         "seed": seed,
         "alias_table_size": len(alias_table),
+        "source_dataset_name": dataset.name,
+        "source_document_count": len(dataset.corpus),
+        "source_query_count": len(dataset.queries),
+        "counterfactual_artifact_version": COUNTERFACTUAL_ARTIFACT_VERSION,
+        "source_dataset_fingerprint": dataset_fingerprint(dataset),
     }
     renamed_dataset = RetrievalDataset(
         name=variant_name,
@@ -109,6 +117,79 @@ def export_counterfactual_artifacts(
     (root / "alias_table.json").write_text(json.dumps(result.alias_table, indent=2, ensure_ascii=False), encoding="utf-8")
     (root / "validation.json").write_text(json.dumps(result.validation, indent=2, ensure_ascii=False), encoding="utf-8")
     return root
+
+
+def load_counterfactual_artifacts(
+    output_dir: str | Path,
+    max_corpus: int | None = None,
+    max_queries: int | None = None,
+) -> CounterfactualBuildResult:
+    root = Path(output_dir)
+    dataset = load_local_dataset(str(root), max_corpus=max_corpus, max_queries=max_queries)
+    alias_path = root / "alias_table.json"
+    validation_path = root / "validation.json"
+    alias_table = json.loads(alias_path.read_text(encoding="utf-8")) if alias_path.exists() else {}
+    validation = json.loads(validation_path.read_text(encoding="utf-8")) if validation_path.exists() else {}
+    return CounterfactualBuildResult(dataset=dataset, alias_table=alias_table, validation=validation)
+
+
+def resolve_counterfactual_artifact_dir(
+    artifact_root: str | Path,
+    dataset: RetrievalDataset,
+    alias_style: str = "natural",
+    include_values: bool = False,
+    seed: int = 13,
+) -> Path:
+    root = Path(artifact_root)
+    regime = "entity_and_value" if include_values else "entity"
+    corpus_label = f"c{len(dataset.corpus)}"
+    query_label = f"q{len(dataset.queries)}"
+    fingerprint = dataset_fingerprint(dataset)[:12]
+    slug = _slugify(dataset.name)
+    directory = (
+        f"{slug}__{regime}__{alias_style}__seed{seed}"
+        f"__{corpus_label}__{query_label}__{COUNTERFACTUAL_ARTIFACT_VERSION}__{fingerprint}"
+    )
+    return root / directory
+
+
+def dataset_fingerprint(dataset: RetrievalDataset) -> str:
+    digest = hashlib.sha256()
+    digest.update(f"name={dataset.name}\n".encode("utf-8"))
+    digest.update(f"metadata={json.dumps(dict(dataset.metadata), sort_keys=True, ensure_ascii=False)}\n".encode("utf-8"))
+    for document in dataset.corpus:
+        digest.update(
+            json.dumps(
+                {
+                    "doc_id": document.doc_id,
+                    "title": document.title,
+                    "text": document.text,
+                    "metadata": dict(document.metadata),
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            ).encode("utf-8")
+        )
+        digest.update(b"\n")
+    for query in dataset.queries:
+        digest.update(
+            json.dumps(
+                {
+                    "query_id": query.query_id,
+                    "text": query.text,
+                    "answers": list(query.answers),
+                    "answer_aliases": list(query.answer_aliases),
+                    "supporting_doc_ids": list(query.supporting_doc_ids),
+                    "supporting_facts": list(query.supporting_facts),
+                    "metadata": dict(query.metadata),
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            ).encode("utf-8")
+        )
+        digest.update(b"\n")
+    digest.update(json.dumps(dataset.qrels, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+    return digest.hexdigest()
 
 
 def collect_renamable_spans(dataset: RetrievalDataset, include_values: bool = False) -> dict[str, str]:
@@ -376,3 +457,8 @@ def _residual_mentions(alias_table: Mapping[str, Mapping[str, str]], text: str) 
 def _progress(progress: ProgressCallback | None, message: str) -> None:
     if progress is not None:
         progress(message)
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "dataset"

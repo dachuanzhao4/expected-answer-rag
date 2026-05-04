@@ -11,13 +11,14 @@ conda activate rag
 
 N="${N:-100}"
 MAX_CORPUS="${MAX_CORPUS:-200}"
-FULL_CORPUS="${FULL_CORPUS:-0}"
+FULL_CORPUS="${FULL_CORPUS:-1}"
 GENERATION_WORKERS="${GENERATION_WORKERS:-4}"
-MODEL="${MODEL:-openai/gpt-5-mini}"
+MODEL="${MODEL:-openai/gpt-4o-mini}"
 RUN_TAG="${RUN_TAG:-}"
 OUTPUT_DIR="${OUTPUT_DIR:-outputs}"
 HF_CACHE_DIR="${HF_CACHE_DIR:-${OUTPUT_DIR}/hf_cache}"
 EMBEDDING_CACHE_DIR="${EMBEDDING_CACHE_DIR:-${OUTPUT_DIR}/embeddings}"
+COUNTERFACTUAL_ARTIFACT_ROOT="${COUNTERFACTUAL_ARTIFACT_ROOT:-${OUTPUT_DIR}/counterfactual_artifacts}"
 METHOD_PROFILE="${METHOD_PROFILE:-main}"
 FAWE_BETAS="${FAWE_BETAS:-0.25,0.5}"
 AUDIT_SAMPLE_SIZE="${AUDIT_SAMPLE_SIZE:-20}"
@@ -31,7 +32,7 @@ datasets=("nq" "scifact" "hotpotqa")
 retrievers=("bm25" "dense")
 cfs=("" "entity" "entity_and_value")
 
-mkdir -p "$OUTPUT_DIR" "$HF_CACHE_DIR" "$EMBEDDING_CACHE_DIR"
+mkdir -p "$OUTPUT_DIR" "$HF_CACHE_DIR" "$EMBEDDING_CACHE_DIR" "$COUNTERFACTUAL_ARTIFACT_ROOT"
 
 for ds in "${datasets[@]}"; do
     for ret in "${retrievers[@]}"; do
@@ -83,7 +84,10 @@ for ds in "${datasets[@]}"; do
                 cmd+=(--max-corpus "$MAX_CORPUS")
             fi
             if [ "$cf" == "entity" ] || [ "$cf" == "entity_and_value" ]; then
-                cmd+=(--counterfactual "$cf")
+                cmd+=(
+                    --counterfactual "$cf"
+                    --counterfactual-artifact-root "$COUNTERFACTUAL_ARTIFACT_ROOT"
+                )
             fi
             if [ "$ret" == "dense" ]; then
                 cmd+=(--embedding-cache "$embedding_cache" --local-files-only)
