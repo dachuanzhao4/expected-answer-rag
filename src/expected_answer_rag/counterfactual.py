@@ -137,28 +137,54 @@ def validate_counterfactual_dataset(
     renamed: RetrievalDataset,
     alias_table: Mapping[str, Mapping[str, str]],
 ) -> dict[str, object]:
-    original_text = "\n".join([doc.text for doc in original.corpus] + [query.text for query in original.queries])
-    renamed_text = "\n".join([doc.text for doc in renamed.corpus] + [query.text for query in renamed.queries])
-    residue = []
-    for source in alias_table:
-        if normalize_text(source) and normalize_text(source) in normalize_text(renamed_text):
-            residue.append(source)
+    original_corpus_text = "\n".join(doc.text for doc in original.corpus)
+    original_query_text = "\n".join(query.text for query in original.queries)
+    renamed_corpus_text = "\n".join(doc.text for doc in renamed.corpus)
+    renamed_query_text = "\n".join(query.text for query in renamed.queries)
+    original_text = "\n".join([original_corpus_text, original_query_text])
+    renamed_text = "\n".join([renamed_corpus_text, renamed_query_text])
+    residue_corpus = _residual_mentions(alias_table, renamed_corpus_text)
+    residue_queries = _residual_mentions(alias_table, renamed_query_text)
     answer_preserved = 0
     answer_total = 0
+    answer_missing_query_ids: list[str] = []
+    support_preserved = 0
+    support_total = 0
+    support_missing_query_ids: list[str] = []
     qrel_doc_map = {doc.doc_id: doc for doc in renamed.corpus}
     for query in renamed.queries:
         if not query.answers:
+            relevant = [qrel_doc_map[doc_id] for doc_id in renamed.qrels.get(query.query_id, {}) if doc_id in qrel_doc_map]
+        else:
+            answer_total += 1
+            relevant = [qrel_doc_map[doc_id] for doc_id in renamed.qrels.get(query.query_id, {}) if doc_id in qrel_doc_map]
+            relevant_text = normalize_text("\n".join(doc.text for doc in relevant))
+            if any(normalize_text(answer) in relevant_text for answer in query.answers):
+                answer_preserved += 1
+            else:
+                answer_missing_query_ids.append(query.query_id)
+        if not query.supporting_facts:
             continue
-        answer_total += 1
-        relevant = [qrel_doc_map[doc_id] for doc_id in renamed.qrels.get(query.query_id, {}) if doc_id in qrel_doc_map]
+        support_total += 1
         relevant_text = normalize_text("\n".join(doc.text for doc in relevant))
-        if any(normalize_text(answer) in relevant_text for answer in query.answers):
-            answer_preserved += 1
+        if any(normalize_text(fact) in relevant_text for fact in query.supporting_facts if normalize_text(fact)):
+            support_preserved += 1
+        else:
+            support_missing_query_ids.append(query.query_id)
     return {
         "replacement_coverage_estimate": _replacement_coverage_estimate(original_text, renamed_text, alias_table),
-        "residual_original_mentions": residue[:50],
+        "residual_original_mentions": sorted(set(residue_corpus + residue_queries))[:50],
+        "residual_original_mentions_in_corpus": residue_corpus[:50],
+        "residual_original_mentions_in_queries": residue_queries[:50],
+        "residual_original_mention_count_in_corpus": len(residue_corpus),
+        "residual_original_mention_count_in_queries": len(residue_queries),
         "alias_table_size": len(alias_table),
         "answer_preservation_rate": (answer_preserved / answer_total) if answer_total else None,
+        "answer_preservation_query_count": answer_total,
+        "answer_preservation_missing_query_ids": answer_missing_query_ids[:50],
+        "support_preservation_rate": (support_preserved / support_total) if support_total else None,
+        "support_preservation_query_count": support_total,
+        "support_preservation_missing_query_ids": support_missing_query_ids[:50],
         "query_count": len(renamed.queries),
         "document_count": len(renamed.corpus),
     }
@@ -308,3 +334,13 @@ def _replacement_coverage_estimate(
         if normalize_text(data["alias"]) in normalize_text(renamed_text):
             replaced += 1
     return replaced / max(len(alias_table), 1)
+
+
+def _residual_mentions(alias_table: Mapping[str, Mapping[str, str]], text: str) -> list[str]:
+    normalized_text = normalize_text(text)
+    residue = []
+    for source in alias_table:
+        normalized_source = normalize_text(source)
+        if normalized_source and normalized_source in normalized_text:
+            residue.append(source)
+    return residue

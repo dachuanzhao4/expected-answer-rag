@@ -1,12 +1,18 @@
 #!/bin/bash
-# rm -f outputs/*_cf*.log outputs/*_cf_run.json outputs/*_cf_ev_run.json outputs/*_cf_cache.json outputs/*_cf_ev_cache.json outputs/*_cf_records.jsonl outputs/*dense_cf*.log outputs/*dense_cf_run.json
+set -euo pipefail
 
 N=100
 MAX_CORPUS=200
+MODEL="openai/gpt-5-mini"
+OUTPUT_DIR="outputs"
+HF_CACHE_DIR="${OUTPUT_DIR}/hf_cache"
+EMBEDDING_CACHE_DIR="${OUTPUT_DIR}/embeddings"
 
 datasets=("nq" "scifact" "hotpotqa")
 retrievers=("bm25" "dense")
 cfs=("" "entity" "entity_and_value")
+
+mkdir -p "$OUTPUT_DIR" "$HF_CACHE_DIR" "$EMBEDDING_CACHE_DIR"
 
 for ds in "${datasets[@]}"; do
     for ret in "${retrievers[@]}"; do
@@ -21,18 +27,36 @@ for ds in "${datasets[@]}"; do
                 out_prefix="${ds}_${N}_cf_ev"
             fi
             
-            cache_file="outputs/${out_prefix}_cache.json"
+            cache_file="${OUTPUT_DIR}/${out_prefix}_cache.json"
+            records_file="${OUTPUT_DIR}/${out_prefix}_records.jsonl"
             
             if [ "$ret" == "bm25" ]; then
-                run_file="outputs/${out_prefix}_run.json"
-                log_file="outputs/${out_prefix}.log"
+                run_file="${OUTPUT_DIR}/${out_prefix}_run.json"
+                log_file="${OUTPUT_DIR}/${out_prefix}.log"
+                ret_flags=""
             else
-                run_file="outputs/${out_prefix}_dense_run.json"
-                log_file="outputs/${out_prefix}_dense.log"
+                run_file="${OUTPUT_DIR}/${out_prefix}_dense_run.json"
+                log_file="${OUTPUT_DIR}/${out_prefix}_dense.log"
+                embedding_cache="${EMBEDDING_CACHE_DIR}/${out_prefix}_bge"
+                ret_flags="--embedding-cache ${embedding_cache} --local-files-only"
             fi
             
-            echo "Running $ds $ret $cf (N=$N)..."
-            conda run -n rag python scripts/run_experiment.py --dataset $ds --max-queries $N --max-corpus $MAX_CORPUS --cache-dir outputs/hf_cache $cf_flag --generator openrouter --model openai/gpt-4o-mini --generation-cache $cache_file --retriever $ret --output $run_file > $log_file 2>&1
+            echo "Running $ds $ret ${cf:-public} (N=$N, model=$MODEL)..."
+            conda run -n rag python scripts/run_experiment.py \
+                --dataset "$ds" \
+                --max-queries "$N" \
+                --max-corpus "$MAX_CORPUS" \
+                --cache-dir "$HF_CACHE_DIR" \
+                $cf_flag \
+                --generator openrouter \
+                --model "$MODEL" \
+                --token-param none \
+                --generation-cache "$cache_file" \
+                --retriever "$ret" \
+                $ret_flags \
+                --output "$run_file" \
+                --records-output "$records_file" \
+                > "$log_file" 2>&1
         done
     done
 done

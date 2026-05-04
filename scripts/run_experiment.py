@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -154,7 +154,8 @@ def main() -> None:
     generator = CachedTextGenerator(
         inner=base_generator,
         cache=JsonCache(cache_path),
-        namespace=args.cache_namespace or f"{args.generator}:{args.model}:temp={args.temperature}",
+        namespace=args.cache_namespace or _default_cache_namespace(args, dataset.name),
+        namespace_aliases=_legacy_cache_namespaces(args),
     )
     answer_rrf_weights = _parse_float_list(args.answer_rrf_weights)
     runs = _initialize_runs(answer_rrf_weights)
@@ -189,16 +190,26 @@ def main() -> None:
         entity_only_masked = entity_only_mask_answer(expected, query.text)
         generic_masked = generic_mask_answer(masked)
         length_matched_filler = length_matched_neutral_filler(query.text, expected)
-        wrong_answer_injection = _wrong_answer_injection(dataset, index, query.text)
+        wrong_answer_candidate = _wrong_answer_candidate(dataset, index)
+        wrong_answer_only = wrong_answer_candidate
+        wrong_answer_injection = f"{query.text}\n{wrong_answer_candidate}".strip()
 
         query_rank = retriever.search(query.text, top_k=args.top_k)
         corpus_steered_text = _build_corpus_steered_expansion(query.text, query_rank, doc_map)
+        corpus_steered_short_text = _build_corpus_steered_expansion(
+            query.text,
+            query_rank,
+            doc_map,
+            max_docs=2,
+            max_words=40,
+        )
 
         method_queries = {
             "hyde_doc_only": hyde_doc,
             "query2doc_concat": f"{query.text}\n{query2doc_doc}",
             "generative_relevance_feedback_concat": f"{query.text}\n{relevance_feedback}",
             "corpus_steered_expansion_concat": f"{query.text}\n{corpus_steered_text}",
+            "corpus_steered_short_concat": f"{query.text}\n{corpus_steered_short_text}",
             "raw_expected_answer_only": expected,
             "concat_query_raw_expected": f"{query.text}\n{expected}",
             "masked_expected_answer_only": masked,
@@ -217,6 +228,8 @@ def main() -> None:
             "generic_mask_slot": generic_masked,
             "concat_query_generic_mask_slot": f"{query.text}\n{generic_masked}",
             "length_matched_neutral_filler": length_matched_filler,
+            "wrong_answer_only": wrong_answer_only,
+            "concat_query_wrong_answer": wrong_answer_injection,
             "wrong_answer_injection": wrong_answer_injection,
         }
         method_queries["query_only"] = query.text
@@ -233,6 +246,16 @@ def main() -> None:
             [query_rank, rankings["answer_candidate_constrained_template_only"]],
             top_k=args.top_k,
         )
+        rankings["rrf_query_masked_expected"] = rankings["dual_query_masked_expected_rrf"]
+        rankings["rrf_query_answer_constrained"] = rankings["dual_query_answer_candidate_constrained_template_rrf"]
+        rankings["rrf_query_wrong_answer"] = reciprocal_rank_fusion(
+            [query_rank, rankings["wrong_answer_only"]],
+            top_k=args.top_k,
+        )
+        rankings["rrf_query_corpus_steered_short"] = reciprocal_rank_fusion(
+            [query_rank, rankings["corpus_steered_short_concat"]],
+            top_k=args.top_k,
+        )
         for weight in answer_rrf_weights:
             suffix = _weight_suffix(weight)
             rankings[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = weighted_reciprocal_rank_fusion(
@@ -242,6 +265,11 @@ def main() -> None:
             )
             rankings[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = weighted_reciprocal_rank_fusion(
                 [query_rank, rankings["masked_expected_answer_only"]],
+                [1.0, weight],
+                top_k=args.top_k,
+            )
+            rankings[f"weighted_rrf_query_answer_constrained_w{suffix}"] = weighted_reciprocal_rank_fusion(
+                [query_rank, rankings["answer_candidate_constrained_template_only"]],
                 [1.0, weight],
                 top_k=args.top_k,
             )
@@ -264,6 +292,7 @@ def main() -> None:
             "query2doc_concat": query2doc_doc,
             "generative_relevance_feedback_concat": relevance_feedback,
             "corpus_steered_expansion_concat": corpus_steered_text,
+            "corpus_steered_short_concat": corpus_steered_short_text,
             "answer_candidate_constrained_template_only": template_retrieval_text,
             "concat_query_answer_candidate_constrained_template": f"{query.text}\n{template_retrieval_text}",
             "oracle_answer_masked": oracle_masked,
@@ -277,14 +306,40 @@ def main() -> None:
             "generic_mask_slot": generic_masked,
             "concat_query_generic_mask_slot": f"{query.text}\n{generic_masked}",
             "length_matched_neutral_filler": length_matched_filler,
+            "wrong_answer_only": wrong_answer_only,
+            "concat_query_wrong_answer": wrong_answer_injection,
             "wrong_answer_injection": wrong_answer_injection,
         }
         leakage_scores = score_generation_methods(query, generated_texts_for_leakage, relevant_docs)
+        leakage_labels = {
+            method_name: {
+                "bucket": leakage_bucket_name(score),
+                "is_leakage_positive": leakage_bucket_name(score) != "leakage_negative",
+                "has_exact_answer_leakage": bool(score.get("exact_answer_leakage")),
+                "has_alias_answer_leakage": bool(score.get("alias_answer_leakage")),
+                "has_candidate_injection": bool(score.get("answer_candidate_leakage")),
+                "has_wrong_prior_injection": bool(score.get("wrong_prior_candidates")),
+                "has_unsupported_injection": bool(score.get("unsupported_candidates")),
+            }
+            for method_name, score in leakage_scores.items()
+        }
         bucket = leakage_bucket_name(leakage_scores["raw_expected_answer_only"])
         features_by_query[query.query_id] = {
             **base_features,
             "leakage_bucket": bucket,
             "raw_expected_answer_only": leakage_scores["raw_expected_answer_only"],
+        }
+        retrieval_strings = dict(method_queries)
+        retrieval_specs = _build_retrieval_specs(
+            query_text=query.text,
+            method_queries=method_queries,
+            answer_rrf_weights=answer_rrf_weights,
+        )
+        wrong_answer_verification = {
+            "candidate": wrong_answer_candidate,
+            "candidate_present_in_wrong_answer_only": _contains_text(wrong_answer_only, wrong_answer_candidate),
+            "candidate_present_in_concat_query_wrong_answer": _contains_text(wrong_answer_injection, wrong_answer_candidate),
+            "concat_query_wrong_answer_differs_from_query_only": _normalize_text(wrong_answer_injection) != _normalize_text(query.text),
         }
 
         generations[query.query_id] = {
@@ -297,9 +352,12 @@ def main() -> None:
             "query2doc_document": query2doc_doc,
             "generative_relevance_feedback": relevance_feedback,
             "corpus_steered_expansion": corpus_steered_text,
+            "corpus_steered_short_expansion": corpus_steered_short_text,
             "answer_candidate_template": template_text,
             "answer_candidate_template_parsed": template_payload,
             "answer_candidate_template_validation": template_validation,
+            "retrieval_strings": retrieval_strings,
+            "retrieval_specs": retrieval_specs,
             "controls": {
                 "oracle_answer_masked": oracle_masked,
                 "post_hoc_gold_removed_expected_answer": posthoc_gold_removed,
@@ -307,7 +365,12 @@ def main() -> None:
                 "entity_only_masking": entity_only_masked,
                 "generic_mask_slot": generic_masked,
                 "length_matched_neutral_filler": length_matched_filler,
+                "wrong_answer_only": wrong_answer_only,
+                "concat_query_wrong_answer": wrong_answer_injection,
                 "wrong_answer_injection": wrong_answer_injection,
+            },
+            "integrity": {
+                "wrong_answer_verification": wrong_answer_verification,
             },
             "artifacts": {
                 "expected_answer": expected_artifact,
@@ -319,6 +382,7 @@ def main() -> None:
             },
             "features": base_features,
             "leakage": leakage_scores,
+            "leakage_labels": leakage_labels,
         }
 
         for method_name, score in leakage_scores.items():
@@ -332,6 +396,12 @@ def main() -> None:
                 "answers": list(query.answers),
                 "answer_aliases": list(query.answer_aliases),
                 "generation": generations[query.query_id],
+                "leakage_labels": leakage_labels,
+                "integrity": {
+                    "wrong_answer_verification": wrong_answer_verification,
+                },
+                "retrieval_strings": retrieval_strings,
+                "retrieval_specs": retrieval_specs,
                 "rankings": {name: runs[name][query.query_id] for name in runs if query.query_id in runs[name]},
                 "qrels": dataset.qrels.get(query.query_id, {}),
             }
@@ -365,6 +435,10 @@ def main() -> None:
         "answer_rrf_weights": answer_rrf_weights,
         "generator": args.generator,
         "model": args.model if args.generator in {"openai", "openrouter"} else None,
+        "generation_cache_path": str(cache_path),
+        "generation_cache_namespace": generator.namespace,
+        "counterfactual_regime": args.counterfactual,
+        "counterfactual_alias_style": args.counterfactual_alias_style if args.counterfactual != "none" else None,
         "top_k": args.top_k,
         "frozen_primary_metrics": FROZEN_PRIMARY_METRICS,
         "frozen_primary_comparisons": FROZEN_PRIMARY_COMPARISONS,
@@ -375,6 +449,7 @@ def main() -> None:
         "leakage_bucket_metrics": leakage_metrics,
         "primary_comparison_stats": stats,
         "qualitative_examples": qualitative,
+        "integrity_summary": _summarize_integrity(records, counterfactual_validation),
         "sample_generations": dict(list(generations.items())[:5]),
     }
 
@@ -419,15 +494,18 @@ def _initialize_runs(answer_rrf_weights: list[float]) -> Dict[str, Dict[str, Ran
         "query2doc_concat": {},
         "generative_relevance_feedback_concat": {},
         "corpus_steered_expansion_concat": {},
+        "corpus_steered_short_concat": {},
         "raw_expected_answer_only": {},
         "concat_query_raw_expected": {},
         "dual_query_raw_expected_rrf": {},
         "masked_expected_answer_only": {},
         "concat_query_masked_expected": {},
         "dual_query_masked_expected_rrf": {},
+        "rrf_query_masked_expected": {},
         "answer_candidate_constrained_template_only": {},
         "concat_query_answer_candidate_constrained_template": {},
         "dual_query_answer_candidate_constrained_template_rrf": {},
+        "rrf_query_answer_constrained": {},
         "gold_answer_only": {},
         "oracle_answer_masked": {},
         "concat_query_oracle_answer_masked": {},
@@ -440,12 +518,17 @@ def _initialize_runs(answer_rrf_weights: list[float]) -> Dict[str, Dict[str, Ran
         "generic_mask_slot": {},
         "concat_query_generic_mask_slot": {},
         "length_matched_neutral_filler": {},
+        "wrong_answer_only": {},
+        "concat_query_wrong_answer": {},
+        "rrf_query_wrong_answer": {},
         "wrong_answer_injection": {},
+        "rrf_query_corpus_steered_short": {},
     }
     for weight in answer_rrf_weights:
         suffix = _weight_suffix(weight)
         base_methods[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = {}
         base_methods[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = {}
+        base_methods[f"weighted_rrf_query_answer_constrained_w{suffix}"] = {}
     return base_methods
 
 
@@ -454,6 +537,7 @@ def _build_corpus_steered_expansion(
     query_rank: RankedList,
     doc_map: Mapping[str, Document],
     max_docs: int = 3,
+    max_words: int | None = None,
 ) -> str:
     snippets = []
     for doc_id, _score in query_rank[:max_docs]:
@@ -463,18 +547,20 @@ def _build_corpus_steered_expansion(
         sentence = doc.text.split(".")[0].strip()
         if sentence:
             snippets.append(sentence)
-    return f"{query_text}\n" + "\n".join(snippets)
+    text = "\n".join(snippets)
+    if max_words is not None:
+        text = " ".join(text.split()[:max_words]).strip()
+    return text
 
 
-def _wrong_answer_injection(dataset, index: int, query_text: str) -> str:
+def _wrong_answer_candidate(dataset, index: int) -> str:
     other_answers = []
     for offset in range(1, len(dataset.queries)):
         other = dataset.queries[(index + offset) % len(dataset.queries)]
         if other.answers:
             other_answers = list(other.answers)
             break
-    candidate = other_answers[0] if other_answers else "Wrong Candidate"
-    return f"{query_text}\n{candidate}"
+    return other_answers[0] if other_answers else "Wrong Candidate"
 
 
 def _compute_primary_comparisons(
@@ -522,6 +608,119 @@ def _parse_float_list(text: str) -> list[float]:
 
 def _weight_suffix(weight: float) -> str:
     return str(weight).replace(".", "p")
+
+
+def _default_cache_namespace(args: argparse.Namespace, dataset_name: str) -> str:
+    return ":".join(
+        [
+            f"generator={args.generator}",
+            f"model={args.model}",
+            f"temperature={args.temperature}",
+            f"dataset={dataset_name}",
+            f"counterfactual={args.counterfactual}",
+            f"alias_style={args.counterfactual_alias_style}",
+        ]
+    )
+
+
+def _legacy_cache_namespaces(args: argparse.Namespace) -> list[str]:
+    namespaces = [f"{args.generator}:{args.model}:temp={args.temperature}"]
+    if args.cache_namespace:
+        namespaces.append(args.cache_namespace)
+    return list(dict.fromkeys(namespaces))
+
+
+def _build_retrieval_specs(
+    query_text: str,
+    method_queries: Mapping[str, str],
+    answer_rrf_weights: list[float],
+) -> dict[str, object]:
+    specs: dict[str, object] = {
+        method_name: {"mode": "single_query", "query_text": method_query}
+        for method_name, method_query in method_queries.items()
+    }
+    specs["dual_query_raw_expected_rrf"] = {
+        "mode": "rrf",
+        "routes": {"query_only": query_text, "raw_expected_answer_only": method_queries["raw_expected_answer_only"]},
+    }
+    specs["dual_query_masked_expected_rrf"] = {
+        "mode": "rrf",
+        "routes": {"query_only": query_text, "masked_expected_answer_only": method_queries["masked_expected_answer_only"]},
+    }
+    specs["rrf_query_masked_expected"] = {
+        "mode": "rrf",
+        "routes": {"query_only": query_text, "masked_expected_answer_only": method_queries["masked_expected_answer_only"]},
+    }
+    specs["dual_query_answer_candidate_constrained_template_rrf"] = {
+        "mode": "rrf",
+        "routes": {
+            "query_only": query_text,
+            "answer_candidate_constrained_template_only": method_queries["answer_candidate_constrained_template_only"],
+        },
+    }
+    specs["rrf_query_answer_constrained"] = specs["dual_query_answer_candidate_constrained_template_rrf"]
+    specs["rrf_query_wrong_answer"] = {
+        "mode": "rrf",
+        "routes": {"query_only": query_text, "wrong_answer_only": method_queries["wrong_answer_only"]},
+    }
+    specs["rrf_query_corpus_steered_short"] = {
+        "mode": "rrf",
+        "routes": {"query_only": query_text, "corpus_steered_short_concat": method_queries["corpus_steered_short_concat"]},
+    }
+    for weight in answer_rrf_weights:
+        suffix = _weight_suffix(weight)
+        specs[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = {
+            "mode": "weighted_rrf",
+            "weights": {"query_only": 1.0, "raw_expected_answer_only": weight},
+            "routes": {"query_only": query_text, "raw_expected_answer_only": method_queries["raw_expected_answer_only"]},
+        }
+        specs[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = {
+            "mode": "weighted_rrf",
+            "weights": {"query_only": 1.0, "masked_expected_answer_only": weight},
+            "routes": {"query_only": query_text, "masked_expected_answer_only": method_queries["masked_expected_answer_only"]},
+        }
+        specs[f"weighted_rrf_query_answer_constrained_w{suffix}"] = {
+            "mode": "weighted_rrf",
+            "weights": {"query_only": 1.0, "answer_candidate_constrained_template_only": weight},
+            "routes": {
+                "query_only": query_text,
+                "answer_candidate_constrained_template_only": method_queries["answer_candidate_constrained_template_only"],
+            },
+        }
+    return specs
+
+
+def _summarize_integrity(records: list[dict[str, object]], counterfactual_validation: Mapping[str, object] | None) -> dict[str, object]:
+    wrong_answer_rows = [record.get("integrity", {}).get("wrong_answer_verification", {}) for record in records]
+    verification = {
+        "candidate_present_in_wrong_answer_only_rate": _rate(
+            row.get("candidate_present_in_wrong_answer_only") for row in wrong_answer_rows
+        ),
+        "candidate_present_in_concat_query_wrong_answer_rate": _rate(
+            row.get("candidate_present_in_concat_query_wrong_answer") for row in wrong_answer_rows
+        ),
+        "concat_query_wrong_answer_differs_from_query_only_rate": _rate(
+            row.get("concat_query_wrong_answer_differs_from_query_only") for row in wrong_answer_rows
+        ),
+    }
+    if counterfactual_validation:
+        verification["counterfactual_validation"] = dict(counterfactual_validation)
+    return verification
+
+
+def _rate(values: Iterable[object]) -> float | None:
+    filtered = [bool(value) for value in values if value is not None]
+    if not filtered:
+        return None
+    return sum(1 for value in filtered if value) / len(filtered)
+
+
+def _contains_text(haystack: str, needle: str) -> bool:
+    return bool(_normalize_text(needle) and _normalize_text(needle) in _normalize_text(haystack))
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join(text.lower().split())
 
 
 if __name__ == "__main__":

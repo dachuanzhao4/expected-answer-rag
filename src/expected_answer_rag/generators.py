@@ -43,7 +43,7 @@ class HeuristicGenerator:
 
     def expected_answer(self, query: str) -> str:
         text = f"The answer to the question is a specific entity or value related to: {query}"
-        self._record("expected_answer", query, text, prompt="heuristic expected answer")
+        self._record("expected_answer", query, text, prompt="heuristic expected answer", prompt_version="expected_answer_v1")
         return text
 
     def hyde_document(self, query: str) -> str:
@@ -51,7 +51,7 @@ class HeuristicGenerator:
             "A relevant passage would directly discuss the subject of the question, "
             f"provide the requested fact, and include supporting context. Question: {query}"
         )
-        self._record("hyde_document", query, text, prompt="heuristic hyde document")
+        self._record("hyde_document", query, text, prompt="heuristic hyde document", prompt_version="hyde_document_v1")
         return text
 
     def query2doc_document(self, query: str) -> str:
@@ -59,12 +59,12 @@ class HeuristicGenerator:
             "Relevant background and entities for retrieval: "
             f"{query}. The document likely states the requested relation explicitly."
         )
-        self._record("query2doc_document", query, text, prompt="heuristic query2doc")
+        self._record("query2doc_document", query, text, prompt="heuristic query2doc", prompt_version="query2doc_document_v1")
         return text
 
     def relevance_feedback(self, query: str) -> str:
         text = f"Important feedback terms and relation clues for retrieval: {query}"
-        self._record("relevance_feedback", query, text, prompt="heuristic relevance feedback")
+        self._record("relevance_feedback", query, text, prompt="heuristic relevance feedback", prompt_version="relevance_feedback_v1")
         return text
 
     def mask_answer(self, query: str, expected_answer: str) -> str:
@@ -74,6 +74,7 @@ class HeuristicGenerator:
             f"Question: {query}\nExpected answer: {expected_answer}",
             text,
             prompt="heuristic mask answer",
+            prompt_version="query_aware_mask_answer_v1",
         )
         return text
 
@@ -86,17 +87,18 @@ class HeuristicGenerator:
             "retrieval_text": f"{query} {slot}".strip(),
         }
         text = json.dumps(payload, ensure_ascii=False)
-        self._record("answer_candidate_template", query, text, prompt="heuristic template")
+        self._record("answer_candidate_template", query, text, prompt="heuristic template", prompt_version="answer_candidate_template_v1")
         return text
 
     def last_artifact(self) -> dict[str, Any] | None:
         return self._last_artifact
 
-    def _record(self, task: str, input_text: str, output_text: str, prompt: str) -> None:
+    def _record(self, task: str, input_text: str, output_text: str, prompt: str, prompt_version: str) -> None:
         self._last_artifact = {
             "task": task,
             "input_text": input_text,
             "prompt": prompt,
+            "prompt_version": prompt_version,
             "output_text": output_text,
             "provider": "heuristic",
             "model": None,
@@ -170,7 +172,7 @@ class OpenAITextGenerator:
             "Do not cite sources and do not include extra background.\n\n"
             f"Question: {query}"
         )
-        return self._complete("expected_answer", query, prompt)
+        return self._complete("expected_answer", query, prompt, prompt_version="expected_answer_v1")
 
     def hyde_document(self, query: str) -> str:
         prompt = (
@@ -179,7 +181,7 @@ class OpenAITextGenerator:
             "Include enough context that it resembles a paragraph from Wikipedia or a reference source.\n\n"
             f"Question: {query}"
         )
-        return self._complete("hyde_document", query, prompt)
+        return self._complete("hyde_document", query, prompt, prompt_version="hyde_document_v1")
 
     def query2doc_document(self, query: str) -> str:
         prompt = (
@@ -187,7 +189,7 @@ class OpenAITextGenerator:
             "Use natural wording and include relation clues, but do not mention uncertainty.\n\n"
             f"Question: {query}"
         )
-        return self._complete("query2doc_document", query, prompt)
+        return self._complete("query2doc_document", query, prompt, prompt_version="query2doc_document_v1")
 
     def relevance_feedback(self, query: str) -> str:
         prompt = (
@@ -195,7 +197,7 @@ class OpenAITextGenerator:
             "Keep it concise and retrieval-oriented.\n\n"
             f"Question: {query}"
         )
-        return self._complete("relevance_feedback", query, prompt)
+        return self._complete("relevance_feedback", query, prompt, prompt_version="relevance_feedback_v1")
 
     def mask_answer(self, query: str, expected_answer: str) -> str:
         prompt = (
@@ -218,7 +220,12 @@ class OpenAITextGenerator:
             f"Question: {query}\n"
             f"Expected answer: {expected_answer}"
         )
-        return self._complete("query_aware_mask_answer", f"Question: {query}\nExpected answer: {expected_answer}", prompt)
+        return self._complete(
+            "query_aware_mask_answer",
+            f"Question: {query}\nExpected answer: {expected_answer}",
+            prompt,
+            prompt_version="query_aware_mask_answer_v1",
+        )
 
     def answer_candidate_template(self, query: str) -> str:
         prompt = (
@@ -232,12 +239,12 @@ class OpenAITextGenerator:
             "4. Include the relation or evidence need in natural language.\n"
             "5. Return JSON with keys: known_anchors, unknown_slot_type, relation_intent, retrieval_text.\n"
         )
-        return self._complete("answer_candidate_template", query, prompt)
+        return self._complete("answer_candidate_template", query, prompt, prompt_version="answer_candidate_template_v1")
 
     def last_artifact(self) -> dict[str, Any] | None:
         return self._last_artifact
 
-    def _complete(self, task: str, input_text: str, prompt: str) -> str:
+    def _complete(self, task: str, input_text: str, prompt: str, prompt_version: str) -> str:
         extra_headers = {}
         if self.referer:
             extra_headers["HTTP-Referer"] = self.referer
@@ -279,6 +286,7 @@ class OpenAITextGenerator:
                         "task": task,
                         "input_text": input_text,
                         "prompt": prompt,
+                        "prompt_version": prompt_version,
                         "output_text": text,
                         "provider": "openai-compatible",
                         "model": self.model,
@@ -308,6 +316,7 @@ class CachedTextGenerator:
     inner: TextGenerator
     cache: JsonCache
     namespace: str
+    namespace_aliases: list[str] | None = None
     _last_artifact: dict[str, Any] | None = None
 
     def expected_answer(self, query: str) -> str:
@@ -333,8 +342,18 @@ class CachedTextGenerator:
         return self._last_artifact
 
     def _cached(self, task: str, text: str, build) -> str:
-        key = f"{self.namespace}:{task}:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
-        cached = self.cache.get(key)
+        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        namespaces = [self.namespace, *(self.namespace_aliases or [])]
+        cached = None
+        key = None
+        for namespace in namespaces:
+            candidate_key = f"{namespace}:{task}:{text_hash}"
+            cached = self.cache.get(candidate_key)
+            if cached is not None:
+                key = candidate_key
+                break
+        if key is None:
+            key = f"{self.namespace}:{task}:{text_hash}"
         if isinstance(cached, dict) and str(cached.get("output_text", "")).strip():
             self._last_artifact = dict(cached)
             return str(cached["output_text"])
@@ -343,6 +362,7 @@ class CachedTextGenerator:
                 "task": task,
                 "input_text": text,
                 "prompt": None,
+                "prompt_version": _default_prompt_version(task),
                 "output_text": cached,
                 "provider": "legacy-cache",
                 "model": None,
@@ -357,10 +377,22 @@ class CachedTextGenerator:
         artifact.setdefault("task", task)
         artifact.setdefault("input_text", text)
         artifact.setdefault("output_text", value)
+        artifact.setdefault("prompt_version", _default_prompt_version(task))
         artifact.setdefault("timestamp_utc", _now_utc())
         self.cache.set(key, artifact)
         self._last_artifact = artifact
         return value
+
+
+def _default_prompt_version(task: str) -> str:
+    return {
+        "expected_answer": "expected_answer_v1",
+        "hyde_document": "hyde_document_v1",
+        "query2doc_document": "query2doc_document_v1",
+        "relevance_feedback": "relevance_feedback_v1",
+        "query_aware_mask_answer": "query_aware_mask_answer_v1",
+        "answer_candidate_template": "answer_candidate_template_v1",
+    }.get(task, f"{task}_v1")
 
 
 def parse_answer_candidate_template(text: str, query: str) -> dict[str, Any]:
