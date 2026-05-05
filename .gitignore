@@ -21,3 +21,4 @@ cache/
 *.tmp
 
 outputs_old/
+.DS_Store
