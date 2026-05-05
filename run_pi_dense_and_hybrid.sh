@@ -9,6 +9,7 @@ HF_CACHE="${HF_CACHE:-outputs/hf_cache}"
 ARTIFACT_ROOT="${ARTIFACT_ROOT:-${OUT_DIR}/counterfactual_artifacts}"
 MODEL="${MODEL:-openai/gpt-4o-mini}"
 DATASETS="${DATASETS:-nq scifact hotpotqa}"
+CACHE_ONLY="${CACHE_ONLY:-0}"
 
 mkdir -p "$OUT_DIR/embeddings"
 
@@ -53,7 +54,6 @@ run_one() {
     --token-param none
     --generation-cache "$cache"
     --generation-workers "$GENERATION_WORKERS"
-    --cache-only
     --method-profile main
     --top-k 100
     --metric-ks 5,10,20,100
@@ -62,6 +62,10 @@ run_one() {
     --output "$run"
     --records-output "$records"
   )
+
+  if [ "$CACHE_ONLY" = "1" ]; then
+    cmd+=(--cache-only)
+  fi
 
   if [ "$cf" != "none" ]; then
     cmd+=(--counterfactual "$cf")

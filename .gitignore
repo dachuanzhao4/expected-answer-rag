@@ -21,4 +21,5 @@ cache/
 *.tmp
 
 outputs_old/
+outputs_pi/
 .DS_Store
