@@ -38,6 +38,9 @@ class BM25Retriever:
         self.doc_len: Dict[str, int] = {}
         self.term_freqs: Dict[str, Counter[str]] = {}
         self.inverted: Dict[str, Dict[str, int]] = defaultdict(dict)
+        self.doc_freqs: Dict[str, int] = {}
+        self.idf_by_term: Dict[str, float] = {}
+        self.vocabulary_terms: List[str] = []
         total_len = 0
 
         for doc in self.documents:
@@ -51,6 +54,12 @@ class BM25Retriever:
 
         self.avg_doc_len = total_len / max(len(self.documents), 1)
         self.num_docs = len(self.documents)
+        self.doc_freqs = {term: len(postings) for term, postings in self.inverted.items()}
+        self.idf_by_term = {
+            term: math.log(1 + (self.num_docs - df + 0.5) / (df + 0.5))
+            for term, df in self.doc_freqs.items()
+        }
+        self.vocabulary_terms = sorted(self.inverted)
 
     def search(self, query: str, top_k: int = 10) -> RankedList:
         scores: Dict[str, float] = defaultdict(float)
@@ -59,8 +68,10 @@ class BM25Retriever:
             postings = self.inverted.get(term)
             if not postings:
                 continue
-            df = len(postings)
-            idf = math.log(1 + (self.num_docs - df + 0.5) / (df + 0.5))
+            idf = self.idf_by_term.get(term)
+            if idf is None:
+                df = len(postings)
+                idf = math.log(1 + (self.num_docs - df + 0.5) / (df + 0.5))
             for doc_id, tf in postings.items():
                 doc_len = self.doc_len[doc_id]
                 denom = tf + self.k1 * (1 - self.b + self.b * doc_len / max(self.avg_doc_len, 1e-9))

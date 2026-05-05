@@ -19,3 +19,5 @@ cache/
 
 *.log
 *.tmp
+
+outputs_old/

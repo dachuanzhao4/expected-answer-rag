@@ -4,9 +4,11 @@ import argparse
 import concurrent.futures
 import hashlib
 import json
+import math
 import os
 import random
 import sys
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping
 
@@ -130,6 +132,7 @@ FAWE_DEFAULT_BETAS = {
 
 MAIN_METHODS = [
     "query_only",
+    "bm25_rm3_query_only",
     "hyde_doc_only",
     "query2doc_concat",
     "generative_relevance_feedback_concat",
@@ -217,6 +220,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--counterfactual-export-dir", default=None)
     parser.add_argument("--counterfactual-artifact-root", default=None)
     parser.add_argument("--retriever", choices=["bm25", "dense"], default="bm25")
+    parser.add_argument("--include-rm3-baseline", action="store_true")
+    parser.add_argument("--rm3-fb-docs", type=int, default=10)
+    parser.add_argument("--rm3-fb-terms", type=int, default=10)
+    parser.add_argument("--rm3-original-query-weight", type=float, default=0.5)
     parser.add_argument("--embedding-model", default="BAAI/bge-base-en-v1.5")
     parser.add_argument("--embedding-batch-size", type=int, default=64)
     parser.add_argument("--embedding-chunk-size", type=int, default=1024)
@@ -242,6 +249,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generation-workers", type=int, default=1, help="Threads for precomputing generations across queries.")
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--method-profile", choices=["full", "main"], default="full")
+    parser.add_argument("--include-fawe-controls", action="store_true")
+    parser.add_argument("--include-fawe-beta-grid", action="store_true")
     parser.add_argument(
         "--answer-rrf-weights",
         default="0.25,0.5,0.75",
@@ -349,8 +358,22 @@ def main() -> None:
     )
     answer_rrf_weights = _parse_float_list(args.answer_rrf_weights)
     fawe_betas = _parse_float_list(args.fawe_betas)
-    selected_methods = _select_methods(args.method_profile, answer_rrf_weights, fawe_betas)
-    runs = _initialize_runs(answer_rrf_weights, fawe_betas, selected_methods)
+    selected_methods = _select_methods(
+        args.method_profile,
+        answer_rrf_weights,
+        fawe_betas,
+        include_rm3_baseline=args.include_rm3_baseline,
+        include_fawe_controls=args.include_fawe_controls,
+        include_fawe_beta_grid=args.include_fawe_beta_grid,
+    )
+    runs = _initialize_runs(
+        answer_rrf_weights,
+        fawe_betas,
+        selected_methods,
+        include_rm3_baseline=args.include_rm3_baseline,
+        include_fawe_controls=args.include_fawe_controls,
+        include_fawe_beta_grid=args.include_fawe_beta_grid,
+    )
     records_path = _resolve_path(args.records_output)
     records_path.parent.mkdir(parents=True, exist_ok=True)
     doc_map = {doc.doc_id: doc for doc in dataset.corpus}
@@ -496,6 +519,14 @@ def main() -> None:
         "answer_rrf_weights": answer_rrf_weights,
         "fawe_betas": fawe_betas,
         "method_profile": args.method_profile,
+        "include_rm3_baseline": args.include_rm3_baseline,
+        "include_fawe_controls": args.include_fawe_controls,
+        "include_fawe_beta_grid": args.include_fawe_beta_grid,
+        "rm3_params": {
+            "fb_docs": args.rm3_fb_docs,
+            "fb_terms": args.rm3_fb_terms,
+            "original_query_weight": args.rm3_original_query_weight,
+        } if args.include_rm3_baseline else None,
         "methods_evaluated": list(runs),
         "generator": args.generator,
         "model": args.model if args.generator in {"openai", "openrouter"} else None,
@@ -566,9 +597,13 @@ def _initialize_runs(
     answer_rrf_weights: list[float],
     fawe_betas: list[float],
     selected_methods: list[str],
+    include_rm3_baseline: bool = False,
+    include_fawe_controls: bool = False,
+    include_fawe_beta_grid: bool = False,
 ) -> Dict[str, Dict[str, RankedList]]:
     base_methods = {
         "query_only": {},
+        **({"bm25_rm3_query_only": {}} if include_rm3_baseline else {}),
         "hyde_doc_only": {},
         "query2doc_concat": {},
         "generative_relevance_feedback_concat": {},
@@ -617,12 +652,22 @@ def _initialize_runs(
         "fawe_query2doc_beta0p25": {},
         "fawe_safe_adaptive_beta": {},
     }
+    if include_fawe_controls:
+        base_methods["fawe_shuffled_expected_beta0p25"] = {}
+        base_methods["fawe_wrong_answer_beta0p25"] = {}
+        base_methods["fawe_neutral_filler_beta0p25"] = {}
+        base_methods["fawe_query_repeated_beta0p25"] = {}
+        base_methods["fawe_random_terms_from_corpus_beta0p25"] = {}
+        base_methods["fawe_idf_matched_random_terms_beta0p25"] = {}
+    if include_fawe_beta_grid:
+        for method_name in _fawe_beta_grid_method_names(fawe_betas):
+            base_methods[method_name] = {}
     for weight in answer_rrf_weights:
         suffix = _weight_suffix(weight)
         base_methods[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = {}
         base_methods[f"weighted_dual_query_masked_expected_rrf_w{suffix}"] = {}
         base_methods[f"weighted_rrf_query_answer_constrained_w{suffix}"] = {}
-    if not fawe_betas:
+    if not fawe_betas and not include_fawe_beta_grid:
         for name in [
             "fawe_raw_expected_beta0p25",
             "fawe_masked_expected_beta0p25",
@@ -636,11 +681,42 @@ def _initialize_runs(
     return {name: base_methods[name] for name in selected_methods if name in base_methods}
 
 
-def _select_methods(method_profile: str, answer_rrf_weights: list[float], fawe_betas: list[float]) -> list[str]:
-    all_methods = list(_initialize_runs(answer_rrf_weights, fawe_betas, selected_methods=[]).keys())
+def _select_methods(
+    method_profile: str,
+    answer_rrf_weights: list[float],
+    fawe_betas: list[float],
+    include_rm3_baseline: bool = False,
+    include_fawe_controls: bool = False,
+    include_fawe_beta_grid: bool = False,
+) -> list[str]:
+    all_methods = list(
+        _initialize_runs(
+            answer_rrf_weights,
+            fawe_betas,
+            selected_methods=[],
+            include_rm3_baseline=include_rm3_baseline,
+            include_fawe_controls=include_fawe_controls,
+            include_fawe_beta_grid=include_fawe_beta_grid,
+        ).keys()
+    )
     if method_profile == "full":
         return all_methods
     keep = set(MAIN_METHODS)
+    if include_rm3_baseline:
+        keep.add("bm25_rm3_query_only")
+    if include_fawe_controls:
+        keep.update(
+            {
+                "fawe_shuffled_expected_beta0p25",
+                "fawe_wrong_answer_beta0p25",
+                "fawe_neutral_filler_beta0p25",
+                "fawe_query_repeated_beta0p25",
+                "fawe_random_terms_from_corpus_beta0p25",
+                "fawe_idf_matched_random_terms_beta0p25",
+            }
+        )
+    if include_fawe_beta_grid:
+        keep.update(_fawe_beta_grid_method_names(fawe_betas))
     keep.update({"fawe_safe_adaptive_beta"} if fawe_betas else set())
     return [name for name in all_methods if name in keep]
 
@@ -679,6 +755,21 @@ def _resolve_named_fawe_betas(fawe_betas: list[float]) -> dict[str, float]:
     }
 
 
+def _fawe_beta_grid_method_names(fawe_betas: list[float]) -> list[str]:
+    betas = sorted(dict.fromkeys(fawe_betas or sorted(set(FAWE_DEFAULT_BETAS.values()))))
+    families = [
+        "raw_expected",
+        "masked_expected",
+        "answer_constrained",
+        "query2doc",
+    ]
+    names: list[str] = []
+    for family in families:
+        for beta in betas:
+            names.append(f"fawe_{family}_beta{_weight_suffix(beta)}")
+    return names
+
+
 def _closest_beta(betas: list[float], target: float) -> float:
     return min(betas, key=lambda value: (abs(value - target), value))
 
@@ -698,6 +789,114 @@ def _fielded_anchor_weighted_search(
     ]
     combined.sort(key=lambda item: item[1], reverse=True)
     return combined[:top_k]
+
+
+def _bm25_rm3_search(
+    retriever,
+    query_text: str,
+    query_ranking: RankedList,
+    top_k: int,
+    fb_docs: int,
+    fb_terms: int,
+    original_query_weight: float,
+) -> tuple[RankedList, str]:
+    if not hasattr(retriever, "term_freqs") or not hasattr(retriever, "doc_len"):
+        return query_ranking, query_text
+    feedback_docs = query_ranking[: max(fb_docs, 1)]
+    if not feedback_docs:
+        return query_ranking, query_text
+    max_score = max(score for _doc_id, score in feedback_docs)
+    exp_weights = [math.exp(score - max_score) for _doc_id, score in feedback_docs]
+    total_weight = sum(exp_weights) or 1.0
+    normalized_doc_weights = [weight / total_weight for weight in exp_weights]
+    expansion_scores: dict[str, float] = defaultdict(float)
+    original_terms = Counter(tokenize(query_text))
+    for (doc_id, _score), doc_weight in zip(feedback_docs, normalized_doc_weights, strict=False):
+        term_freqs = retriever.term_freqs.get(doc_id, {})
+        doc_len = max(retriever.doc_len.get(doc_id, 0), 1)
+        for term, tf in term_freqs.items():
+            if len(term) <= 2 or term in ROUTE_STOPWORDS:
+                continue
+            expansion_scores[term] += doc_weight * (tf / doc_len)
+    ranked_terms = [
+        (term, score)
+        for term, score in sorted(expansion_scores.items(), key=lambda item: (-item[1], item[0]))
+        if term not in original_terms
+    ][: max(fb_terms, 1)]
+    if not ranked_terms:
+        return query_ranking, query_text
+    max_term_score = ranked_terms[0][1] or 1.0
+    expansion_terms: list[str] = []
+    for term, score in ranked_terms:
+        repeats = max(1, round((score / max_term_score) * 3))
+        expansion_terms.extend([term] * repeats)
+    query_repeat = max(1, round(original_query_weight * 4))
+    expanded_query = " ".join(([query_text] * query_repeat) + expansion_terms).strip()
+    return retriever.search(expanded_query, top_k=top_k), expanded_query
+
+
+def _random_corpus_terms(
+    retriever,
+    doc_map: Mapping[str, Document],
+    seed: int,
+    count: int,
+    exclude_terms: set[str],
+) -> str:
+    vocabulary = list(getattr(retriever, "vocabulary_terms", []))
+    if not vocabulary:
+        vocab_set: set[str] = set()
+        for doc in doc_map.values():
+            vocab_set.update(tokenize(doc.text))
+        vocabulary = sorted(vocab_set)
+    candidates = [term for term in vocabulary if len(term) > 2 and term not in ROUTE_STOPWORDS and term not in exclude_terms]
+    if not candidates:
+        return ""
+    rng = random.Random(seed)
+    if len(candidates) <= count:
+        rng.shuffle(candidates)
+        return " ".join(candidates)
+    return " ".join(rng.sample(candidates, count))
+
+
+def _idf_matched_random_terms(
+    reference_text: str,
+    retriever,
+    doc_map: Mapping[str, Document],
+    seed: int,
+    count: int,
+    exclude_terms: set[str],
+) -> str:
+    idf_by_term = getattr(retriever, "idf_by_term", {})
+    if not idf_by_term:
+        return _random_corpus_terms(retriever, doc_map, seed=seed, count=count, exclude_terms=exclude_terms)
+    reference_terms = [term for term in tokenize(reference_text) if term in idf_by_term]
+    if not reference_terms:
+        return _random_corpus_terms(retriever, doc_map, seed=seed, count=count, exclude_terms=exclude_terms)
+    rng = random.Random(seed)
+    vocabulary = [term for term in getattr(retriever, "vocabulary_terms", []) if len(term) > 2 and term not in ROUTE_STOPWORDS and term not in exclude_terms]
+    if not vocabulary:
+        return ""
+    chosen: list[str] = []
+    used: set[str] = set()
+    for index, term in enumerate(reference_terms[:count]):
+        target = idf_by_term[term]
+        nearby = sorted(
+            vocabulary,
+            key=lambda candidate: (abs(idf_by_term.get(candidate, 0.0) - target), candidate),
+        )
+        if not nearby:
+            continue
+        window = nearby[: min(25, len(nearby))]
+        candidate = window[(rng.randint(0, len(window) - 1) + index) % len(window)]
+        if candidate in used:
+            continue
+        used.add(candidate)
+        chosen.append(candidate)
+    if len(chosen) < count:
+        fallback = _random_corpus_terms(retriever, doc_map, seed=seed + 997, count=count - len(chosen), exclude_terms=exclude_terms | set(chosen))
+        if fallback:
+            chosen.extend(fallback.split())
+    return " ".join(chosen[:count])
 
 
 def _format_fawe_retrieval_text(query_text: str, expansion_text: str, beta: float) -> str:
@@ -1452,6 +1651,22 @@ def _process_query(
     query_plus_neutral_filler = length_matched_filler
     neutral_filler_plus_query = _prepend_filler_to_query(query.text, expected)
     raw_expected_then_query = f"{expected}\n{query.text}".strip()
+    exclude_terms = set(tokenize(query.text))
+    random_corpus_terms = _random_corpus_terms(
+        retriever,
+        doc_map,
+        seed=args.audit_seed + query_index,
+        count=max(len(tokenize(expected)), 4),
+        exclude_terms=exclude_terms,
+    )
+    idf_matched_random_terms = _idf_matched_random_terms(
+        expected,
+        retriever,
+        doc_map,
+        seed=args.audit_seed + query_index + 101,
+        count=max(len(tokenize(expected)), 4),
+        exclude_terms=exclude_terms,
+    )
     corpus_steered_text = str(query_context["corpus_steered_text"])
     corpus_steered_short_text = str(query_context["corpus_steered_short_text"])
 
@@ -1507,6 +1722,17 @@ def _process_query(
         if method_name == "query_only":
             continue
         rankings[method_name] = search_cached(method_queries[method_name], args.top_k)
+    rm3_retrieval_text = query.text
+    if "bm25_rm3_query_only" in selected_run_methods:
+        rankings["bm25_rm3_query_only"], rm3_retrieval_text = _bm25_rm3_search(
+            retriever=retriever,
+            query_text=query.text,
+            query_ranking=query_rank,
+            top_k=args.top_k,
+            fb_docs=args.rm3_fb_docs,
+            fb_terms=args.rm3_fb_terms,
+            original_query_weight=args.rm3_original_query_weight,
+        )
 
     needs_cf_prompt = "cf_prompt_query_expansion_rrf" in selected_run_methods
     if needs_cf_prompt:
@@ -1686,9 +1912,45 @@ def _process_query(
                 beta=fawe_safe_beta,
                 top_k=args.top_k,
             )
+        fawe_control_expansions = {
+            "fawe_shuffled_expected_beta0p25": shuffled_expected,
+            "fawe_wrong_answer_beta0p25": wrong_answer_only,
+            "fawe_neutral_filler_beta0p25": length_matched_filler,
+            "fawe_query_repeated_beta0p25": query.text,
+            "fawe_random_terms_from_corpus_beta0p25": random_corpus_terms,
+            "fawe_idf_matched_random_terms_beta0p25": idf_matched_random_terms,
+        }
+        for method_name, expansion_text in fawe_control_expansions.items():
+            if method_name not in selected_run_methods or not expansion_text.strip():
+                continue
+            rankings[method_name] = _fielded_anchor_weighted_search(
+                query_ranking=full_query_ranking,
+                expansion_ranking=fawe_expansion_ranking(expansion_text),
+                beta=0.25,
+                top_k=args.top_k,
+            )
+        if args.include_fawe_beta_grid:
+            beta_grid_expansions = {
+                "raw_expected": expected,
+                "masked_expected": masked,
+                "answer_constrained": template_retrieval_text,
+                "query2doc": query2doc_doc,
+            }
+            for family, expansion_text in beta_grid_expansions.items():
+                for beta in sorted(dict.fromkeys(fawe_betas or sorted(set(FAWE_DEFAULT_BETAS.values())))):
+                    method_name = f"fawe_{family}_beta{_weight_suffix(beta)}"
+                    if method_name not in selected_run_methods:
+                        continue
+                    rankings[method_name] = _fielded_anchor_weighted_search(
+                        query_ranking=full_query_ranking,
+                        expansion_ranking=fawe_expansion_ranking(expansion_text),
+                        beta=beta,
+                        top_k=args.top_k,
+                    )
 
     base_features = generation_features(query, expected, masked, hyde_doc)
     generated_texts_for_leakage = {
+        "bm25_rm3_query_only": rm3_retrieval_text,
         "raw_expected_answer_only": expected,
         "concat_query_raw_expected": f"{query.text}\n{expected}",
         "masked_expected_answer_only": masked,
@@ -1725,6 +1987,12 @@ def _process_query(
         "fawe_answer_constrained_beta0p5": template_retrieval_text,
         "fawe_query2doc_beta0p25": query2doc_doc,
         "fawe_safe_adaptive_beta": template_retrieval_text,
+        "fawe_shuffled_expected_beta0p25": shuffled_expected,
+        "fawe_wrong_answer_beta0p25": wrong_answer_only,
+        "fawe_neutral_filler_beta0p25": length_matched_filler,
+        "fawe_query_repeated_beta0p25": query.text,
+        "fawe_random_terms_from_corpus_beta0p25": random_corpus_terms,
+        "fawe_idf_matched_random_terms_beta0p25": idf_matched_random_terms,
         "cf_prompt_query_expansion_rrf": cf_prompt_selected_joined or cf_prompt_joined,
     }
     leakage_scores = score_generation_methods(query, generated_texts_for_leakage, relevant_docs)
@@ -1762,6 +2030,7 @@ def _process_query(
             top_k=args.top_k,
         )
     retrieval_strings = dict(method_queries)
+    retrieval_strings["bm25_rm3_query_only"] = rm3_retrieval_text
     retrieval_strings["cf_prompt_query_expansion_rrf"] = cf_prompt_selected_joined or cf_prompt_joined
     retrieval_strings["fawe_raw_expected_beta0p25"] = _format_fawe_retrieval_text(query.text, expected, named_fawe_betas["raw_expected"])
     retrieval_strings["fawe_masked_expected_beta0p25"] = _format_fawe_retrieval_text(query.text, masked, named_fawe_betas["masked_expected"])
@@ -1772,6 +2041,26 @@ def _process_query(
     )
     retrieval_strings["fawe_query2doc_beta0p25"] = _format_fawe_retrieval_text(query.text, query2doc_doc, named_fawe_betas["query2doc"])
     retrieval_strings["fawe_safe_adaptive_beta"] = _format_fawe_retrieval_text(query.text, template_retrieval_text, fawe_safe_beta)
+    retrieval_strings["fawe_shuffled_expected_beta0p25"] = _format_fawe_retrieval_text(query.text, shuffled_expected, 0.25)
+    retrieval_strings["fawe_wrong_answer_beta0p25"] = _format_fawe_retrieval_text(query.text, wrong_answer_only, 0.25)
+    retrieval_strings["fawe_neutral_filler_beta0p25"] = _format_fawe_retrieval_text(query.text, length_matched_filler, 0.25)
+    retrieval_strings["fawe_query_repeated_beta0p25"] = _format_fawe_retrieval_text(query.text, query.text, 0.25)
+    retrieval_strings["fawe_random_terms_from_corpus_beta0p25"] = _format_fawe_retrieval_text(query.text, random_corpus_terms, 0.25)
+    retrieval_strings["fawe_idf_matched_random_terms_beta0p25"] = _format_fawe_retrieval_text(query.text, idf_matched_random_terms, 0.25)
+    if args.include_fawe_beta_grid:
+        beta_grid_expansions = {
+            "raw_expected": expected,
+            "masked_expected": masked,
+            "answer_constrained": template_retrieval_text,
+            "query2doc": query2doc_doc,
+        }
+        for family, expansion_text in beta_grid_expansions.items():
+            for beta in sorted(dict.fromkeys(fawe_betas or sorted(set(FAWE_DEFAULT_BETAS.values())))):
+                retrieval_strings[f"fawe_{family}_beta{_weight_suffix(beta)}"] = _format_fawe_retrieval_text(
+                    query.text,
+                    expansion_text,
+                    beta,
+                )
     retrieval_specs = _build_retrieval_specs(
         query_text=query.text,
         method_queries=method_queries,
@@ -1788,6 +2077,57 @@ def _process_query(
         safe_rrf_v1_weights=safe_rrf_v1_weights,
         cf_prompt_bundle=cf_prompt_bundle,
     )
+    retrieval_specs["bm25_rm3_query_only"] = {
+        "mode": "rm3_query_expansion",
+        "fb_docs": args.rm3_fb_docs,
+        "fb_terms": args.rm3_fb_terms,
+        "original_query_weight": args.rm3_original_query_weight,
+        "routes": {"query_only": query.text},
+    }
+    retrieval_specs["fawe_shuffled_expected_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": 0.25,
+        "routes": {"query_only": query.text, "expansion": shuffled_expected},
+    }
+    retrieval_specs["fawe_wrong_answer_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": 0.25,
+        "routes": {"query_only": query.text, "expansion": wrong_answer_only},
+    }
+    retrieval_specs["fawe_neutral_filler_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": 0.25,
+        "routes": {"query_only": query.text, "expansion": length_matched_filler},
+    }
+    retrieval_specs["fawe_query_repeated_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": 0.25,
+        "routes": {"query_only": query.text, "expansion": query.text},
+    }
+    retrieval_specs["fawe_random_terms_from_corpus_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": 0.25,
+        "routes": {"query_only": query.text, "expansion": random_corpus_terms},
+    }
+    retrieval_specs["fawe_idf_matched_random_terms_beta0p25"] = {
+        "mode": "fielded_anchor_weighted",
+        "beta": 0.25,
+        "routes": {"query_only": query.text, "expansion": idf_matched_random_terms},
+    }
+    if args.include_fawe_beta_grid:
+        beta_grid_expansions = {
+            "raw_expected": expected,
+            "masked_expected": masked,
+            "answer_constrained": template_retrieval_text,
+            "query2doc": query2doc_doc,
+        }
+        for family, expansion_text in beta_grid_expansions.items():
+            for beta in sorted(dict.fromkeys(fawe_betas or sorted(set(FAWE_DEFAULT_BETAS.values())))):
+                retrieval_specs[f"fawe_{family}_beta{_weight_suffix(beta)}"] = {
+                    "mode": "fielded_anchor_weighted",
+                    "beta": beta,
+                    "routes": {"query_only": query.text, "expansion": expansion_text},
+                }
     wrong_answer_verification = {
         "candidate": wrong_answer_candidate,
         "candidate_present_in_wrong_answer_only": _contains_text(wrong_answer_only, wrong_answer_candidate),
@@ -1850,6 +2190,12 @@ def _process_query(
             "query_plus_neutral_filler": query_plus_neutral_filler,
             "neutral_filler_plus_query": neutral_filler_plus_query,
             "raw_expected_then_query": raw_expected_then_query,
+            "fawe_shuffled_expected_beta0p25": shuffled_expected,
+            "fawe_wrong_answer_beta0p25": wrong_answer_only,
+            "fawe_neutral_filler_beta0p25": length_matched_filler,
+            "fawe_query_repeated_beta0p25": query.text,
+            "fawe_random_terms_from_corpus_beta0p25": random_corpus_terms,
+            "fawe_idf_matched_random_terms_beta0p25": idf_matched_random_terms,
         },
         "integrity": {
             "wrong_answer_verification": wrong_answer_verification,
@@ -1898,6 +2244,7 @@ def _required_single_query_methods(selected_methods: set[str]) -> set[str]:
     needed = {"query_only"}
     synthetic_methods = {
         "query_only",
+        "bm25_rm3_query_only",
         "dual_query_raw_expected_rrf",
         "dual_query_masked_expected_rrf",
         "dual_query_answer_candidate_constrained_template_rrf",
@@ -1913,6 +2260,12 @@ def _required_single_query_methods(selected_methods: set[str]) -> set[str]:
         "fawe_answer_constrained_beta0p5",
         "fawe_query2doc_beta0p25",
         "fawe_safe_adaptive_beta",
+        "fawe_shuffled_expected_beta0p25",
+        "fawe_wrong_answer_beta0p25",
+        "fawe_neutral_filler_beta0p25",
+        "fawe_query_repeated_beta0p25",
+        "fawe_random_terms_from_corpus_beta0p25",
+        "fawe_idf_matched_random_terms_beta0p25",
     }
     for method_name in selected_methods:
         if method_name in synthetic_methods:
@@ -1922,6 +2275,14 @@ def _required_single_query_methods(selected_methods: set[str]) -> set[str]:
         if method_name.startswith("weighted_dual_query_masked_expected_rrf_w"):
             continue
         if method_name.startswith("weighted_rrf_query_answer_constrained_w"):
+            continue
+        if method_name.startswith("fawe_raw_expected_beta"):
+            continue
+        if method_name.startswith("fawe_masked_expected_beta"):
+            continue
+        if method_name.startswith("fawe_answer_constrained_beta"):
+            continue
+        if method_name.startswith("fawe_query2doc_beta"):
             continue
         needed.add(method_name)
     if "dual_query_raw_expected_rrf" in selected_methods or any(
@@ -2141,6 +2502,13 @@ def _build_retrieval_specs(
         method_name: {"mode": "single_query", "query_text": method_query}
         for method_name, method_query in method_queries.items()
     }
+    specs["bm25_rm3_query_only"] = {
+        "mode": "rm3_query_expansion",
+        "fb_docs": None,
+        "fb_terms": None,
+        "original_query_weight": None,
+        "routes": {"query_only": query_text},
+    }
     specs["dual_query_raw_expected_rrf"] = {
         "mode": "rrf",
         "routes": {"query_only": query_text, "raw_expected_answer_only": method_queries["raw_expected_answer_only"]},
@@ -2233,6 +2601,18 @@ def _build_retrieval_specs(
             "answer_candidate_constrained_template_only": fawe_expansions["answer_constrained"],
         },
     }
+    fawe_control_expansions = {
+        "fawe_shuffled_expected_beta0p25": method_queries.get("query_plus_shuffled_expected", ""),
+        "fawe_wrong_answer_beta0p25": method_queries.get("wrong_answer_only", ""),
+        "fawe_neutral_filler_beta0p25": method_queries.get("length_matched_neutral_filler", ""),
+        "fawe_query_repeated_beta0p25": query_text,
+    }
+    for method_name, expansion_text in fawe_control_expansions.items():
+        specs[method_name] = {
+            "mode": "fielded_anchor_weighted",
+            "beta": 0.25,
+            "routes": {"query_only": query_text, "expansion": expansion_text},
+        }
     for weight in answer_rrf_weights:
         suffix = _weight_suffix(weight)
         specs[f"weighted_dual_query_raw_expected_rrf_w{suffix}"] = {
@@ -2253,6 +2633,16 @@ def _build_retrieval_specs(
                 "answer_candidate_constrained_template_only": method_queries["answer_candidate_constrained_template_only"],
             },
         }
+    for beta in sorted(dict.fromkeys(named_fawe_betas.values())):
+        suffix = _weight_suffix(beta)
+        specs.setdefault(
+            f"fawe_query2doc_beta{suffix}",
+            {
+                "mode": "fielded_anchor_weighted",
+                "beta": beta,
+                "routes": {"query_only": query_text, "query2doc_document": fawe_expansions["query2doc"]},
+            },
+        )
     return specs
 
 
