@@ -165,6 +165,7 @@ def load_beir_dataset(
         for row in _take(corpus_rows, max_corpus)
     ]
     corpus_ids = {doc.doc_id for doc in corpus}
+    all_qrels_by_query = _parse_qrels(qrel_rows_list, query_ids=set(), corpus_ids=set())
     filtered_qrel_rows = [
         row
         for row in qrel_rows_list
@@ -197,13 +198,18 @@ def load_beir_dataset(
             break
     query_ids = {query.query_id for query in queries}
     qrels = _parse_qrels(filtered_qrel_rows, query_ids=query_ids, corpus_ids=corpus_ids)
+    qrel_coverage = _qrel_coverage_summary(query_ids, qrels, all_qrels_by_query)
 
     return RetrievalDataset(
         name=name,
         corpus=corpus,
         queries=queries,
         qrels=qrels,
-        metadata={"dataset_type": "beir", "answer_metadata": any(query.answers for query in queries)},
+        metadata={
+            "dataset_type": "beir",
+            "answer_metadata": any(query.answers for query in queries),
+            "qrel_coverage": qrel_coverage,
+        },
     )
 
 
@@ -351,6 +357,38 @@ def _parse_qrels(
             continue
         qrels.setdefault(qid, {})[did] = score
     return qrels
+
+
+def _qrel_coverage_summary(
+    query_ids: set[str],
+    included_qrels: Mapping[str, Mapping[str, int]],
+    full_qrels: Mapping[str, Mapping[str, int]],
+) -> dict[str, object]:
+    rows = []
+    for qid in sorted(query_ids):
+        total = sum(1 for score in full_qrels.get(qid, {}).values() if score > 0)
+        included = sum(1 for score in included_qrels.get(qid, {}).values() if score > 0)
+        coverage = (included / total) if total else 0.0
+        rows.append({"query_id": qid, "included": included, "total": total, "coverage": coverage})
+    if not rows:
+        return {
+            "num_queries": 0,
+            "queries_with_relevant": 0,
+            "queries_with_included_relevant": 0,
+            "mean_coverage": 0.0,
+            "min_coverage": 0.0,
+            "zero_coverage_queries": [],
+        }
+    coverages = [row["coverage"] for row in rows if row["total"] > 0]
+    zero_coverage = [row["query_id"] for row in rows if row["total"] > 0 and row["included"] == 0]
+    return {
+        "num_queries": len(rows),
+        "queries_with_relevant": sum(1 for row in rows if row["total"] > 0),
+        "queries_with_included_relevant": sum(1 for row in rows if row["included"] > 0),
+        "mean_coverage": (sum(coverages) / len(coverages)) if coverages else 0.0,
+        "min_coverage": min(coverages) if coverages else 0.0,
+        "zero_coverage_queries": zero_coverage,
+    }
 
 
 def _tupleify(value: object) -> tuple[str, ...]:

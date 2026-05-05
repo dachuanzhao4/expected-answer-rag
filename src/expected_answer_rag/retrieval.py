@@ -220,6 +220,42 @@ class SentenceTransformerRetriever:
         metadata_path.write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
 
 
+@dataclass
+class HybridRetriever:
+    documents: List[Document]
+    model_name: str = "BAAI/bge-base-en-v1.5"
+    batch_size: int = 64
+    query_prefix: str = "Represent this sentence for searching relevant passages: "
+    embedding_cache: str | None = None
+    chunk_size: int = 1024
+    local_files_only: bool = False
+    dense_weight: float = 1.0
+    bm25_weight: float = 1.0
+
+    def __post_init__(self) -> None:
+        self._bm25 = BM25Retriever(self.documents)
+        self._dense = SentenceTransformerRetriever(
+            documents=self.documents,
+            model_name=self.model_name,
+            batch_size=self.batch_size,
+            query_prefix=self.query_prefix,
+            embedding_cache=self.embedding_cache,
+            chunk_size=self.chunk_size,
+            local_files_only=self.local_files_only,
+        )
+
+    def search(self, query: str, top_k: int = 10) -> RankedList:
+        pool_size = max(top_k, min(len(self.documents), top_k * 10))
+        bm25_rank = self._bm25.search(query, top_k=pool_size)
+        dense_rank = self._dense.search(query, top_k=pool_size)
+        scores: Dict[str, float] = defaultdict(float)
+        for rank, (doc_id, _score) in enumerate(bm25_rank, start=1):
+            scores[doc_id] += self.bm25_weight / (60.0 + rank)
+        for rank, (doc_id, _score) in enumerate(dense_rank, start=1):
+            scores[doc_id] += self.dense_weight / (60.0 + rank)
+        return sorted(scores.items(), key=lambda item: item[1], reverse=True)[:top_k]
+
+
 def make_retriever(
     kind: str,
     documents: List[Document],
@@ -234,6 +270,16 @@ def make_retriever(
         return BM25Retriever(documents)
     if kind == "dense":
         return SentenceTransformerRetriever(
+            documents=documents,
+            model_name=embedding_model,
+            batch_size=embedding_batch_size,
+            query_prefix=query_prefix,
+            embedding_cache=embedding_cache,
+            chunk_size=embedding_chunk_size,
+            local_files_only=local_files_only,
+        )
+    if kind in {"hybrid", "lexical_neural"}:
+        return HybridRetriever(
             documents=documents,
             model_name=embedding_model,
             batch_size=embedding_batch_size,

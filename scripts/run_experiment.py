@@ -8,6 +8,7 @@ import math
 import os
 import random
 import sys
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping
@@ -62,7 +63,7 @@ from expected_answer_rag.retrieval import RankedList, make_retriever
 from expected_answer_rag.statistics import paired_bootstrap_ci, paired_permutation_test, win_tie_loss
 
 
-FROZEN_PRIMARY_METRICS = ["ndcg@10", "recall@10", "recall@20", "mrr@10"]
+FROZEN_PRIMARY_METRICS = ["ndcg@10", "recall@10", "recall@20", "recall@100", "mrr@10"]
 FROZEN_PRIMARY_COMPARISONS = [
     ("concat_query_raw_expected", "concat_query_masked_expected"),
     ("concat_query_raw_expected", "concat_query_answer_candidate_constrained_template"),
@@ -219,7 +220,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--counterfactual-seed", type=int, default=13)
     parser.add_argument("--counterfactual-export-dir", default=None)
     parser.add_argument("--counterfactual-artifact-root", default=None)
-    parser.add_argument("--retriever", choices=["bm25", "dense"], default="bm25")
+    parser.add_argument("--retriever", choices=["bm25", "dense", "hybrid", "lexical_neural"], default="bm25")
     parser.add_argument("--include-rm3-baseline", action="store_true")
     parser.add_argument("--rm3-fb-docs", type=int, default=10)
     parser.add_argument("--rm3-fb-terms", type=int, default=10)
@@ -248,6 +249,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generation-cache", default="outputs/generation_cache.json")
     parser.add_argument("--generation-workers", type=int, default=1, help="Threads for precomputing generations across queries.")
     parser.add_argument("--top-k", type=int, default=20)
+    parser.add_argument(
+        "--metric-ks",
+        default="5,10,20,100",
+        help="Comma-separated recall cutoffs to compute from each ranking. Use top-k >= max(metric-ks).",
+    )
     parser.add_argument("--method-profile", choices=["full", "main"], default="full")
     parser.add_argument("--include-fawe-controls", action="store_true")
     parser.add_argument("--include-fawe-beta-grid", action="store_true")
@@ -275,6 +281,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    run_start = time.perf_counter()
     args = parse_args()
     counterfactual_artifact_dir: Path | None = None
     print(
@@ -358,6 +365,7 @@ def main() -> None:
     )
     answer_rrf_weights = _parse_float_list(args.answer_rrf_weights)
     fawe_betas = _parse_float_list(args.fawe_betas)
+    metric_ks = [int(value) for value in _parse_float_list(args.metric_ks)]
     selected_methods = _select_methods(
         args.method_profile,
         answer_rrf_weights,
@@ -387,7 +395,7 @@ def main() -> None:
         "top_k": args.top_k,
     }
     checkpoint_records = _load_checkpoint_records(records_path, dataset, runs.keys(), checkpoint_context)
-    checkpoint_state = _restore_checkpoint_state(checkpoint_records, runs, dataset)
+    checkpoint_state = _restore_checkpoint_state(checkpoint_records, runs, dataset, metric_ks=metric_ks)
     completed_query_ids = set(checkpoint_state["completed_query_ids"])
     remaining_queries = [query for query in dataset.queries if query.query_id not in completed_query_ids]
     query_positions = {query.query_id: index for index, query in enumerate(dataset.queries)}
@@ -474,13 +482,18 @@ def main() -> None:
                 per_query_method_metrics[run_name][query_id] = per_query_metrics(
                     ranking,
                     dataset.qrels.get(query_id, {}),
+                    ks=metric_ks,
                 )
             records.append(processed["record"])
             _append_checkpoint_record(checkpoint_handle, processed["record"])
     finally:
         checkpoint_handle.close()
 
-    metrics = {name: evaluate_run(run, dataset.qrels) for name, run in runs.items()}
+    metrics = {name: evaluate_run(run, dataset.qrels, ks=metric_ks) for name, run in runs.items()}
+    metric_error_bars = _compute_metric_error_bars(
+        per_query_method_metrics,
+        bootstrap_samples=args.stats_bootstrap_samples,
+    )
     leakage_metrics = {name: evaluate_by_leakage_bucket(run, dataset.qrels, features_by_query) for name, run in runs.items()}
     stats = _compute_primary_comparisons(
         dataset,
@@ -498,7 +511,7 @@ def main() -> None:
         sample_size=args.audit_sample_size,
         seed=args.audit_seed,
     )
-    dense_position_audit = _dense_position_audit(records) if args.retriever == "dense" else None
+    dense_position_audit = _dense_position_audit(records) if args.retriever in {"dense", "hybrid", "lexical_neural"} else None
     qualitative = {
         "raw_expected_answer_only": select_qualitative_examples(records, "raw_expected_answer_only", limit=args.qualitative_limit),
         "masked_expected_answer_only": select_qualitative_examples(records, "masked_expected_answer_only", limit=args.qualitative_limit),
@@ -512,9 +525,10 @@ def main() -> None:
         "num_corpus": len(dataset.corpus),
         "num_queries": len(dataset.queries),
         "num_qrels_queries": len(dataset.qrels),
+        "qrel_coverage": dataset.metadata.get("qrel_coverage"),
         "retriever": args.retriever,
-        "embedding_model": args.embedding_model if args.retriever == "dense" else None,
-        "query_prefix": args.query_prefix if args.retriever == "dense" else None,
+        "embedding_model": args.embedding_model if args.retriever in {"dense", "hybrid", "lexical_neural"} else None,
+        "query_prefix": args.query_prefix if args.retriever in {"dense", "hybrid", "lexical_neural"} else None,
         "embedding_cache": str(_resolve_path(args.embedding_cache)) if args.embedding_cache else None,
         "answer_rrf_weights": answer_rrf_weights,
         "fawe_betas": fawe_betas,
@@ -536,6 +550,8 @@ def main() -> None:
         "counterfactual_alias_style": args.counterfactual_alias_style if args.counterfactual != "none" else None,
         "counterfactual_artifact_dir": str(counterfactual_artifact_dir) if counterfactual_artifact_dir else None,
         "top_k": args.top_k,
+        "metric_ks": metric_ks,
+        "runtime_seconds": round(time.perf_counter() - run_start, 3),
         "resume_summary": {
             "checkpoint_records_loaded": len(checkpoint_records),
             "queries_completed_from_checkpoint": len(completed_query_ids),
@@ -544,6 +560,7 @@ def main() -> None:
         "frozen_primary_metrics": FROZEN_PRIMARY_METRICS,
         "frozen_primary_comparisons": FROZEN_PRIMARY_COMPARISONS,
         "metrics": metrics,
+        "metric_error_bars": metric_error_bars,
         "method_ranking": compare_methods(metrics),
         "generation_summary": summarize_generation_features(features_by_query.values()),
         "method_leakage_summary": summarize_method_leakage(leakage_by_method),
@@ -1026,6 +1043,22 @@ def _query_dominance_summary(records: list[dict[str, object]]) -> dict[str, floa
             deltas.append(method_score - baseline)
         summary[f"{method_name}_delta_vs_query_only_ndcg@10"] = (sum(deltas) / len(deltas)) if deltas else None
     return summary
+
+
+def _compute_metric_error_bars(
+    per_query_method_metrics: Mapping[str, Mapping[str, Mapping[str, float]]],
+    bootstrap_samples: int,
+) -> dict[str, dict[str, dict[str, float]]]:
+    error_bars: dict[str, dict[str, dict[str, float]]] = {}
+    for method_name, query_metrics in per_query_method_metrics.items():
+        metric_names = sorted({metric for metrics in query_metrics.values() for metric in metrics})
+        method_error_bars: dict[str, dict[str, float]] = {}
+        for metric_name in metric_names:
+            values = [float(metrics[metric_name]) for metrics in query_metrics.values() if metric_name in metrics]
+            if values:
+                method_error_bars[metric_name] = paired_bootstrap_ci(values, num_samples=bootstrap_samples)
+        error_bars[method_name] = method_error_bars
+    return error_bars
 
 
 def _sample_retrieval_audit(
@@ -2371,6 +2404,7 @@ def _restore_checkpoint_state(
     checkpoint_records: list[dict[str, object]],
     runs: Mapping[str, Dict[str, RankedList]],
     dataset,
+    metric_ks: Iterable[int] = (5, 10, 20),
 ) -> dict[str, object]:
     features_by_query: dict[str, dict[str, object]] = {}
     generations: dict[str, dict[str, object]] = {}
@@ -2403,6 +2437,7 @@ def _restore_checkpoint_state(
             per_query_method_metrics[run_name][query_id] = per_query_metrics(
                 ranking,
                 dataset.qrels.get(query_id, {}),
+                ks=metric_ks,
             )
     return {
         "records": checkpoint_records,
