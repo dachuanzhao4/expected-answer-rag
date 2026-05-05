@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Postprocesses completed candidate-pool scaling runs and emits draft-ready
-# Markdown/CSV/LaTeX summaries. By default it summarizes 1k/3k/5k, matching the
-# current low-compute placeholder plan.
+# Markdown/CSV/LaTeX summaries. By default it summarizes 1k/3k/5k and reads the
+# existing 3k results from outputs_pi/c3000.
 
 CANDIDATE_CORPUS_SIZES="${CANDIDATE_CORPUS_SIZES:-1000 3000 5000}"
 MAX_QUERIES="${MAX_QUERIES:-100}"
@@ -24,6 +24,7 @@ if [ "$RUN_POSTPROCESS_PER_SIZE" = "1" ]; then
     fi
 
     echo "=== Postprocessing candidate-pool size ${size} ==="
+    echo "Input/output directory: $out_dir"
     MAX_CORPUS="$size" \
     MAX_QUERIES="$MAX_QUERIES" \
     DATASETS="$DATASETS" \

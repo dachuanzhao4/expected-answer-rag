@@ -2,8 +2,10 @@
 set -euo pipefail
 
 # Runs the BM25 candidate-pool scaling package used to fill the draft's
-# 1k/3k/5k/10k/... placeholder table. Generation caches are reused from
-# outputs/*_cache.json by run_pi_larger_corpus_3000.sh.
+# 1k/3k/5k/10k/... placeholder table. Existing 3k runs are expected in
+# outputs_pi/c3000, so the default sizes skip 3000. If 3000 is included
+# explicitly, run_pi_larger_corpus_3000.sh will read/write outputs_pi/c3000
+# and skip completed run files.
 
 CANDIDATE_CORPUS_SIZES="${CANDIDATE_CORPUS_SIZES:-1000 5000}"
 MAX_QUERIES="${MAX_QUERIES:-100}"
@@ -17,6 +19,7 @@ cd "$SCRIPT_DIR"
 
 for size in $CANDIDATE_CORPUS_SIZES; do
   echo "=== Candidate-pool scaling: max_corpus=${size}, max_queries=${MAX_QUERIES} ==="
+  echo "Run directory: outputs_pi/c${size}"
   MAX_CORPUS="$size" \
   MAX_QUERIES="$MAX_QUERIES" \
   GENERATION_WORKERS="$GENERATION_WORKERS" \
