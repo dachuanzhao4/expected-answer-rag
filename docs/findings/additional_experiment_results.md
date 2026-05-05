@@ -1,21 +1,23 @@
 # Additional Experiment Results
 
-This report summarizes the PI-requested follow-up experiments available under `outputs_pi/c3000`. Unless otherwise stated, all scores are `nDCG@10`. Error bars are paired bootstrap 95% confidence intervals over queries, reported as approximate half-widths.
+This report summarizes the PI-requested follow-up experiments under `outputs_pi/c3000`. Unless otherwise stated, scores are `nDCG@10`. Bootstrap error bars are paired 95% confidence intervals over queries, shown as approximate half-widths where included.
 
 ## Output Inventory
 
-Completed artifacts:
+The new result package is now complete for the requested retrieval matrix:
 
-- Larger-corpus BM25 replication at `max_corpus=3000` for NQ, HotpotQA, and SciFact across Public, Entity-CF, and Entity+Value-CF.
-- Cross-regime leakage-isolation runs for `expected`, `query2doc`, and `hyde` expansions across Entity-CF and Entity+Value-CF corpora.
-- Held-out FAWE beta selection for `fawe_query2doc_beta*`.
-- Expansion-content audit summaries.
-- Postprocessed metric error bars for the new runs and legacy outputs.
-- Figures with error bars in `outputs_pi/c3000/figures`.
+| Family | Completed outputs |
+|---|---:|
+| BM25 larger-corpus replication | 3 datasets x 3 regimes |
+| Dense BGE | 3 datasets x 3 regimes |
+| Dense E5 | 3 datasets x 3 regimes |
+| Dense Contriever | 3 datasets x 3 regimes |
+| Hybrid BM25+E5 | 3 datasets x 3 regimes |
+| Cross-regime leakage isolation | 3 datasets x 2 CF regimes x 3 expansion types |
+| Held-out beta selection | 3 datasets x 3 objectives |
+| Expansion content audit | 3 datasets |
 
-Incomplete artifacts:
-
-- The dense/hybrid follow-up is not complete. I found `outputs_pi/c3000/nq_100_c3000_bge.log` and BGE embedding cache files, but no dense, E5, Contriever, or hybrid `*_run.json` outputs. The log stops during generation precomputation for NQ BGE, so this family should not be used for claims yet.
+The run directory contains 45 `*_run.json` files for the retriever matrix. Generated figures with error bars are in `outputs_pi/c3000/figures`.
 
 ## Qrel Coverage
 
@@ -30,9 +32,9 @@ Increasing the corpus cap from 2k to 3k increases the evaluable query count for 
 | SciFact | 2000 | 2000 | 100 | 0.949 | 0.200 | 0 |
 | SciFact | 3000 | 3000 | 100 | 0.988 | 0.500 | 0 |
 
-## Larger-Corpus BM25 Replication
+## BM25 Larger-Corpus Replication
 
-The 3k replication preserves the main counterfactual finding: FAWE-Q2D is better than naive Query2doc in all six counterfactual conditions. Public performance is mixed, with Query2doc slightly ahead on NQ, FAWE-Q2D ahead on HotpotQA and SciFact, and anchored expected-answer concatenation strongest on public HotpotQA.
+The 3k BM25 replication preserves the main counterfactual result: FAWE-Q2D is better than naive Query2doc in every counterfactual condition. Public performance is mixed, but the qualitative counterfactual ranking does not flip.
 
 | Dataset | Regime | Query | AnswerOnly | HyDE | Query2doc | AnchoredAnswer | FAWE-Q2D | FAWE-Adapt | Best method |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -46,7 +48,7 @@ The 3k replication preserves the main counterfactual finding: FAWE-Q2D is better
 | SciFact | Entity-CF | 0.6399 | 0.6364 | 0.5419 | 0.6302 | 0.6685 | 0.6528 | 0.6507 | FAWE-answer beta 0.75 0.6754 |
 | SciFact | Entity+Value-CF | 0.6435 | 0.6143 | 0.5750 | 0.6483 | 0.6814 | 0.6560 | 0.6527 | AnchoredAnswer 0.6814 |
 
-Average across the three datasets:
+Average across datasets:
 
 | Regime | Query | AnswerOnly | HyDE | Query2doc | AnchoredAnswer | FAWE-Q2D | FAWE-Adapt |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -54,21 +56,21 @@ Average across the three datasets:
 | Entity-CF | 0.4675 | 0.4468 | 0.3549 | 0.4577 | 0.5086 | 0.4979 | 0.4849 |
 | Entity+Value-CF | 0.4643 | 0.4077 | 0.3389 | 0.4376 | 0.4929 | 0.4888 | 0.4871 |
 
-FAWE-Q2D versus Query2doc with bootstrap error bars:
+FAWE-Q2D versus Query2doc:
 
 | Dataset | Regime | Query2doc | FAWE-Q2D | Delta |
 |---|---|---:|---:|---:|
-| NQ | Public | 0.7526 ± 0.0609 | 0.7367 ± 0.0657 | -0.0159 |
-| NQ | Entity-CF | 0.4057 ± 0.0736 | 0.4412 ± 0.0764 | +0.0355 |
-| NQ | Entity+Value-CF | 0.3845 ± 0.0798 | 0.4275 ± 0.0825 | +0.0431 |
-| HotpotQA | Public | 0.8245 ± 0.0619 | 0.8478 ± 0.0618 | +0.0233 |
-| HotpotQA | Entity-CF | 0.3373 ± 0.0837 | 0.3997 ± 0.0865 | +0.0624 |
-| HotpotQA | Entity+Value-CF | 0.2801 ± 0.0748 | 0.3828 ± 0.0820 | +0.1027 |
-| SciFact | Public | 0.7744 ± 0.0634 | 0.7817 ± 0.0603 | +0.0073 |
-| SciFact | Entity-CF | 0.6302 ± 0.0883 | 0.6528 ± 0.0842 | +0.0226 |
-| SciFact | Entity+Value-CF | 0.6483 ± 0.0790 | 0.6560 ± 0.0803 | +0.0077 |
+| NQ | Public | 0.7526 +/- 0.0609 | 0.7367 +/- 0.0657 | -0.0159 |
+| NQ | Entity-CF | 0.4057 +/- 0.0736 | 0.4412 +/- 0.0764 | +0.0355 |
+| NQ | Entity+Value-CF | 0.3845 +/- 0.0798 | 0.4275 +/- 0.0825 | +0.0431 |
+| HotpotQA | Public | 0.8245 +/- 0.0619 | 0.8478 +/- 0.0618 | +0.0233 |
+| HotpotQA | Entity-CF | 0.3373 +/- 0.0837 | 0.3997 +/- 0.0865 | +0.0624 |
+| HotpotQA | Entity+Value-CF | 0.2801 +/- 0.0748 | 0.3828 +/- 0.0820 | +0.1027 |
+| SciFact | Public | 0.7744 +/- 0.0634 | 0.7817 +/- 0.0603 | +0.0073 |
+| SciFact | Entity-CF | 0.6302 +/- 0.0883 | 0.6528 +/- 0.0842 | +0.0226 |
+| SciFact | Entity+Value-CF | 0.6483 +/- 0.0790 | 0.6560 +/- 0.0803 | +0.0077 |
 
-Compared with the 2k BM25 follow-up, absolute scores generally decrease at 3k because the candidate pool is harder, but the FAWE-Q2D utility pattern does not flip. The counterfactual FAWE-Q2D gains over Query2doc remain positive in every dataset/regime.
+Compared with the 2k BM25 follow-up, absolute scores generally decrease at 3k because retrieval is harder, but the counterfactual FAWE-Q2D gains remain positive.
 
 | Dataset | Regime | 2k Query2doc | 3k Query2doc | 2k FAWE-Q2D | 3k FAWE-Q2D | 2k Delta | 3k Delta |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -82,7 +84,7 @@ Compared with the 2k BM25 follow-up, absolute scores generally decrease at 3k be
 | SciFact | Entity-CF | 0.6835 | 0.6302 | 0.7057 | 0.6528 | +0.0222 | +0.0226 |
 | SciFact | Entity+Value-CF | 0.6840 | 0.6483 | 0.6995 | 0.6560 | +0.0154 | +0.0077 |
 
-FAWE-Q2D recall:
+FAWE-Q2D recall remains high in public retrieval and drops most on HotpotQA counterfactual retrieval:
 
 | Dataset | Regime | Recall@20 | Recall@100 |
 |---|---|---:|---:|
@@ -96,11 +98,107 @@ FAWE-Q2D recall:
 | SciFact | Entity-CF | 0.8292 | 0.8817 |
 | SciFact | Entity+Value-CF | 0.8367 | 0.9042 |
 
+## Dense and Hybrid Retriever Matrix
+
+The dense/hybrid matrix supports a broad alias-sensitivity claim, with an important caveat: FAWE-Q2D is not uniformly the strongest dense integration strategy. All dense models lose much more query-only performance under counterfactual rewriting than BM25. Hybrid BM25+E5 is more robust than pure dense retrieval, but still drops more than BM25 on average.
+
+Average query-only score by retriever:
+
+| Retriever | Public | Entity-CF | Entity+Value-CF | Public to Entity drop | Public to E+V drop |
+|---|---:|---:|---:|---:|---:|
+| BM25 | 0.6777 | 0.4675 | 0.4643 | +0.2102 | +0.2134 |
+| BGE | 0.8258 | 0.3798 | 0.3724 | +0.4460 | +0.4534 |
+| E5 | 0.8078 | 0.3829 | 0.3850 | +0.4249 | +0.4228 |
+| Contriever | 0.7118 | 0.3329 | 0.3187 | +0.3789 | +0.3931 |
+| Hybrid BM25+E5 | 0.7728 | 0.4955 | 0.4862 | +0.2773 | +0.2866 |
+
+Average `nDCG@10` by retriever, regime, and core method:
+
+| Retriever | Regime | Query | HyDE | Query2doc | AnchoredAnswer | FAWE-Q2D | FAWE-Adapt |
+|---|---|---:|---:|---:|---:|---:|---:|
+| BM25 | Public | 0.6777 | 0.7749 | 0.7838 | 0.7800 | 0.7887 | 0.6850 |
+| BM25 | Entity-CF | 0.4675 | 0.3549 | 0.4577 | 0.5086 | 0.4979 | 0.4849 |
+| BM25 | Entity+Value-CF | 0.4643 | 0.3389 | 0.4376 | 0.4929 | 0.4888 | 0.4871 |
+| BGE | Public | 0.8258 | 0.8310 | 0.8335 | 0.8397 | 0.8318 | 0.8183 |
+| BGE | Entity-CF | 0.3798 | 0.3647 | 0.3949 | 0.4011 | 0.3873 | 0.3880 |
+| BGE | Entity+Value-CF | 0.3724 | 0.3730 | 0.3901 | 0.3994 | 0.3871 | 0.3754 |
+| E5 | Public | 0.8078 | 0.7976 | 0.7760 | 0.8334 | 0.8177 | 0.8016 |
+| E5 | Entity-CF | 0.3829 | 0.3275 | 0.3583 | 0.4054 | 0.3825 | 0.3836 |
+| E5 | Entity+Value-CF | 0.3850 | 0.3152 | 0.3349 | 0.4002 | 0.3846 | 0.3783 |
+| Contriever | Public | 0.7118 | 0.7994 | 0.7831 | 0.7816 | 0.7548 | 0.7195 |
+| Contriever | Entity-CF | 0.3329 | 0.3503 | 0.3704 | 0.3578 | 0.3537 | 0.3392 |
+| Contriever | Entity+Value-CF | 0.3187 | 0.3538 | 0.3571 | 0.3415 | 0.3406 | 0.3287 |
+| Hybrid BM25+E5 | Public | 0.7728 | 0.8085 | 0.8125 | 0.8294 | 0.8061 | 0.7791 |
+| Hybrid BM25+E5 | Entity-CF | 0.4955 | 0.4294 | 0.4666 | 0.5270 | 0.4995 | 0.4902 |
+| Hybrid BM25+E5 | Entity+Value-CF | 0.4862 | 0.4144 | 0.4655 | 0.4992 | 0.4899 | 0.4784 |
+
+FAWE-Q2D versus Query2doc by retriever:
+
+| Retriever | Public delta | Entity-CF delta | Entity+Value-CF delta |
+|---|---:|---:|---:|
+| BM25 | +0.0049 | +0.0402 | +0.0512 |
+| BGE | -0.0017 | -0.0076 | -0.0030 |
+| E5 | +0.0417 | +0.0242 | +0.0497 |
+| Contriever | -0.0283 | -0.0167 | -0.0166 |
+| Hybrid BM25+E5 | -0.0064 | +0.0329 | +0.0243 |
+
+Best core method by retriever and regime:
+
+| Retriever | Regime | Best core method | Score | Query-only score |
+|---|---|---|---:|---:|
+| BM25 | Public | FAWE-Q2D | 0.7887 | 0.6777 |
+| BM25 | Entity-CF | AnchoredAnswer | 0.5086 | 0.4675 |
+| BM25 | Entity+Value-CF | AnchoredAnswer | 0.4929 | 0.4643 |
+| BGE | Public | AnchoredAnswer | 0.8397 | 0.8258 |
+| BGE | Entity-CF | AnchoredAnswer | 0.4011 | 0.3798 |
+| BGE | Entity+Value-CF | AnchoredAnswer | 0.3994 | 0.3724 |
+| E5 | Public | AnchoredAnswer | 0.8334 | 0.8078 |
+| E5 | Entity-CF | AnchoredAnswer | 0.4054 | 0.3829 |
+| E5 | Entity+Value-CF | AnchoredAnswer | 0.4002 | 0.3850 |
+| Contriever | Public | HyDE | 0.7994 | 0.7118 |
+| Contriever | Entity-CF | Query2doc | 0.3704 | 0.3329 |
+| Contriever | Entity+Value-CF | Query2doc | 0.3571 | 0.3187 |
+| Hybrid BM25+E5 | Public | AnchoredAnswer | 0.8294 | 0.7728 |
+| Hybrid BM25+E5 | Entity-CF | AnchoredAnswer | 0.5270 | 0.4955 |
+| Hybrid BM25+E5 | Entity+Value-CF | AnchoredAnswer | 0.4992 | 0.4862 |
+
+Per-dataset query-only scores show that HotpotQA is the clearest dense alias-sensitivity case:
+
+| Retriever | Dataset | Public | Entity-CF | Entity+Value-CF |
+|---|---|---:|---:|---:|
+| BM25 | NQ | 0.4887 | 0.3459 | 0.3455 |
+| BM25 | HotpotQA | 0.7931 | 0.4167 | 0.4038 |
+| BM25 | SciFact | 0.7513 | 0.6399 | 0.6435 |
+| BGE | NQ | 0.7987 | 0.4268 | 0.4453 |
+| BGE | HotpotQA | 0.8905 | 0.2014 | 0.2174 |
+| BGE | SciFact | 0.7883 | 0.5113 | 0.4545 |
+| E5 | NQ | 0.7852 | 0.4618 | 0.4591 |
+| E5 | HotpotQA | 0.8834 | 0.1906 | 0.2479 |
+| E5 | SciFact | 0.7548 | 0.4964 | 0.4480 |
+| Contriever | NQ | 0.6174 | 0.3273 | 0.3366 |
+| Contriever | HotpotQA | 0.8075 | 0.1729 | 0.1921 |
+| Contriever | SciFact | 0.7105 | 0.4985 | 0.4274 |
+| Hybrid BM25+E5 | NQ | 0.6460 | 0.4555 | 0.4654 |
+| Hybrid BM25+E5 | HotpotQA | 0.8798 | 0.3800 | 0.3736 |
+| Hybrid BM25+E5 | SciFact | 0.7928 | 0.6510 | 0.6197 |
+
+Average query-only `Recall@100` follows the same pattern: hybrid retrieval recovers some counterfactual coverage, but pure dense models lose substantial recall.
+
+| Retriever | Public | Entity-CF | Entity+Value-CF |
+|---|---:|---:|---:|
+| BM25 | 0.9633 | 0.7980 | 0.7958 |
+| BGE | 0.9900 | 0.7668 | 0.7494 |
+| E5 | 0.9867 | 0.7617 | 0.7607 |
+| Contriever | 0.9750 | 0.7664 | 0.7472 |
+| Hybrid BM25+E5 | 0.9867 | 0.8332 | 0.8464 |
+
+Interpretation: the dense result is not BGE-specific. BGE, E5, and Contriever all collapse sharply under entity/value rewriting, especially on HotpotQA. However, the proposed FAWE-Q2D integration is mainly a BM25 and E5/hybrid improvement; it is not consistently beneficial for BGE or Contriever. The paper should therefore claim broad dense alias sensitivity, but avoid claiming FAWE is universally best for dense retrieval.
+
 ## Cross-Regime Leakage Isolation
 
-This experiment evaluates public generations `g_pub` and counterfactual generations `g_cf` against public and counterfactual corpora. The first clear result is that public generated-only retrieval loses substantially on counterfactual corpora. The average public-to-CF drop is 0.235 to 0.350 depending on expansion type and regime.
+This experiment compares public generations `g_pub` and counterfactual generations `g_cf`. Public generated-only retrieval loses substantially on counterfactual corpora. The average public-to-CF drop ranges from 0.235 to 0.350, depending on expansion type and regime.
 
-| Expansion | Regime | g_pub on public | g_pub on CF | Drop | q+g_pub on public | q+g_pub on CF | Drop |
+| Expansion | Regime | g_pub public | g_pub CF | Drop | q+g_pub public | q+g_pub CF | Drop |
 |---|---|---:|---:|---:|---:|---:|---:|
 | Expected answer | Entity-CF | 0.7606 | 0.4596 | +0.3011 | 0.7800 | 0.5458 | +0.2342 |
 | Expected answer | Entity+Value-CF | 0.7606 | 0.4105 | +0.3501 | 0.7800 | 0.5066 | +0.2735 |
@@ -109,9 +207,9 @@ This experiment evaluates public generations `g_pub` and counterfactual generati
 | HyDE | Entity-CF | 0.7749 | 0.5395 | +0.2354 | 0.7920 | 0.6027 | +0.1893 |
 | HyDE | Entity+Value-CF | 0.7749 | 0.5115 | +0.2633 | 0.7920 | 0.5730 | +0.2190 |
 
-The second result is that anchoring and FAWE rescue counterfactual performance more reliably than regenerating under the counterfactual query. For Query2doc, `g_cf` is usually worse than `g_pub` on the CF corpus, while `q_cf + g_pub` and FAWE with `g_pub` are stronger. This means the current experiment supports public-prior brittleness and query anchoring, but it does not support a simple claim that counterfactual generation alone recovers performance.
+For Query2doc, `g_cf` is usually worse than `g_pub` on the CF corpus, while anchoring and FAWE with `g_pub` are stronger. This supports public-prior brittleness and query anchoring, but not a simple claim that counterfactual generation alone recovers performance.
 
-| Dataset | Regime | g_pub→CF | g_cf→CF | q_cf+g_pub | q_cf+g_cf | FAWE g_pub | FAWE g_cf | Anchor rescue | CF-gen gain |
+| Dataset | Regime | g_pub CF | g_cf CF | q_cf+g_pub | q_cf+g_cf | FAWE g_pub | FAWE g_cf | Anchor rescue | CF-gen gain |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | NQ | Entity-CF | 0.5637 | 0.3864 | 0.5764 | 0.4057 | 0.5706 | 0.4412 | +0.0127 | -0.1773 |
 | NQ | Entity+Value-CF | 0.5019 | 0.3652 | 0.5236 | 0.3845 | 0.5508 | 0.4275 | +0.0217 | -0.1367 |
@@ -122,7 +220,7 @@ The second result is that anchoring and FAWE rescue counterfactual performance m
 
 Average cross-regime results:
 
-| Expansion | Regime | g_pub→CF | g_cf→CF | q_cf+g_pub | q_cf+g_cf | FAWE g_pub | FAWE g_cf | Anchor rescue | CF-gen gain |
+| Expansion | Regime | g_pub CF | g_cf CF | q_cf+g_pub | q_cf+g_cf | FAWE g_pub | FAWE g_cf | Anchor rescue | CF-gen gain |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Expected answer | Entity-CF | 0.4596 | 0.4468 | 0.5458 | 0.5086 | 0.5153 | 0.4991 | +0.0863 | -0.0128 |
 | Expected answer | Entity+Value-CF | 0.4105 | 0.4077 | 0.5066 | 0.4929 | 0.4978 | 0.4861 | +0.0961 | -0.0028 |
@@ -131,11 +229,9 @@ Average cross-regime results:
 | HyDE | Entity-CF | 0.5395 | 0.3549 | 0.6027 | 0.4358 | 0.6353 | 0.5073 | +0.0632 | -0.1846 |
 | HyDE | Entity+Value-CF | 0.5115 | 0.3389 | 0.5730 | 0.4191 | 0.6182 | 0.5021 | +0.0614 | -0.1727 |
 
-Interpretation: generated-only public expansions clearly lose under CF corpora, but the strongest CF condition is often not `g_cf`; it is query-anchored or FAWE retrieval using `g_pub`. This suggests the public expansion still contributes useful non-entity relation and lexical structure, while CF generation may degrade expansion quality.
-
 ## Held-Out Beta Selection
 
-Held-out beta selection supports the PI’s robustness concern. Public-only selection can choose a larger beta, but average/robust objectives select smaller betas for HotpotQA and SciFact. NQ consistently selects 0.10.
+Held-out beta selection supports the robustness concern. Public-only selection can choose larger beta values, while average/robust objectives select smaller beta values for HotpotQA and SciFact. NQ consistently selects 0.10.
 
 | Dataset | Objective | Selected beta | Dev queries | Test queries | Public test | Entity-CF test | Entity+Value-CF test |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -149,7 +245,7 @@ Held-out beta selection supports the PI’s robustness concern. Public-only sele
 | SciFact | Average | 0.05 | 28 | 72 | 0.7652 | 0.6588 | 0.6445 |
 | SciFact | Robust | 0.05 | 28 | 72 | 0.7652 | 0.6588 | 0.6445 |
 
-The full 3k beta sweep, averaged across datasets, shows the same pattern: public performance peaks around beta 0.50, while both counterfactual regimes peak at beta 0.10.
+The full 3k BM25 beta sweep, averaged across datasets, peaks at beta 0.50 in public retrieval and beta 0.10 in both counterfactual regimes.
 
 | Regime | beta=0.05 | beta=0.10 | beta=0.25 | beta=0.50 | beta=0.75 | beta=1.00 | Best |
 |---|---:|---:|---:|---:|---:|---:|---|
@@ -159,7 +255,7 @@ The full 3k beta sweep, averaged across datasets, shows the same pattern: public
 
 ## Expansion Content Audit
 
-The automatic audit labels most Query2doc, HyDE, and FAWE-Q2D expansions as answer-bearing because they contain candidate or unsupported injected entities. Exact-answer and alias-answer rates are zero in this audit because these datasets mostly lack explicit answer-alias metadata in the BEIR-loaded records; the candidate and unsupported-injection columns are more informative.
+The automatic audit labels most Query2doc, HyDE, and FAWE-Q2D expansions as answer-bearing because they contain candidate or unsupported injected entities. Exact-answer and alias-answer rates are zero in this audit because the BEIR-loaded records generally lack explicit answer-alias metadata; candidate and unsupported-injection rates are the more informative labels.
 
 Average across datasets:
 
@@ -172,37 +268,25 @@ Average across datasets:
 | FAWE-Q2D | 1.00 | 1.00 | 1.00 | +0.1110 | +0.0806 | +0.0865 |
 | FAWE-Adapt | 1.00 | 1.00 | 1.00 | +0.0073 | -0.0101 | -0.0155 |
 
-Dataset-level audit highlights:
+The audit supports the mechanism: answer-bearing/candidate-injecting expansions can produce public gains and larger counterfactual excess drops. AnchoredAnswer and FAWE-Q2D reduce excess drop relative to naive generated-only or pseudo-document methods. FAWE-Adapt is the most stable but gives little public gain, so it is better framed as a conservative deployment variant.
 
-| Dataset | Method | Answer-bearing | Public gain | Entity excess drop | E+V excess drop |
-|---|---|---:|---:|---:|---:|
-| NQ | HyDE | 1.00 | +0.2398 | +0.2349 | +0.2523 |
-| NQ | Query2doc | 1.00 | +0.2639 | +0.2042 | +0.2250 |
-| NQ | FAWE-Q2D | 1.00 | +0.2480 | +0.1528 | +0.1660 |
-| HotpotQA | HyDE | 1.00 | +0.0610 | +0.3056 | +0.3563 |
-| HotpotQA | Query2doc | 1.00 | +0.0314 | +0.1107 | +0.1551 |
-| HotpotQA | FAWE-Q2D | 1.00 | +0.0547 | +0.0716 | +0.0757 |
-| SciFact | Query2doc | 1.00 | +0.0231 | +0.0328 | +0.0183 |
-| SciFact | AnchoredAnswer | 0.79 | +0.0080 | -0.0206 | -0.0299 |
-| SciFact | FAWE-Q2D | 1.00 | +0.0304 | +0.0175 | +0.0178 |
+## Runtime
 
-The audit supports the paper mechanism: answer-bearing/candidate-injecting expansions can produce public gains and larger counterfactual excess drops. AnchoredAnswer and FAWE-Q2D reduce the excess drop relative to naive generated-only or pseudo-document methods. FAWE-Adapt is the most stable but gives little public gain, so it is better framed as a conservative robustness control than the main effectiveness method.
+Average recorded runtime in minutes:
 
-## Cost and Runtime
-
-Recorded wall-clock runtime for the BM25 3k runs:
-
-| Dataset | Public | Entity-CF | Entity+Value-CF |
+| Retriever | Public | Entity-CF | Entity+Value-CF |
 |---|---:|---:|---:|
-| NQ | 1.1m | 38.6m | 55.2m |
-| HotpotQA | 11.2m | 42.1m | 51.4m |
-| SciFact | 1.8m | 90.1m | 160.8m |
+| BM25 | 4.7 | 56.9 | 89.1 |
+| BGE | 1.1 | 1.3 | 1.3 |
+| E5 | 1.2 | 1.3 | 1.4 |
+| Contriever | 1.2 | 1.3 | 1.4 |
+| Hybrid BM25+E5 | 1.4 | 1.6 | 1.7 |
 
-The counterfactual runs are much slower because they include artifact construction and full-corpus counterfactual rewriting. Since the artifacts are cached under `outputs_pi/c3000/counterfactual_artifacts`, reruns should be faster.
+The BM25 counterfactual runs include artifact construction and full-corpus counterfactual rewriting, which explains the much larger wall-clock time. The dense reruns reused counterfactual artifacts and generation caches, so their runtimes mostly reflect embedding/search work and missing retriever-specific generation cache fills.
 
 ## Figures Generated
 
-The postprocess step generated error-bar figures:
+The postprocess step generated:
 
 - `outputs_pi/c3000/figures/bm25_utility_with_error_bars.pdf`
 - `outputs_pi/c3000/figures/fawe_beta_sweep_with_error_bars.pdf`
@@ -212,12 +296,12 @@ PNG versions are available in the same directory.
 
 ## Bottom-Line Findings
 
-The strongest completed result is the larger-corpus replication. At 3k corpus size, FAWE-Q2D remains better than Query2doc in every counterfactual BM25 condition. The gain is largest on HotpotQA Entity+Value-CF (+0.1027) and remains positive on SciFact, where the task is less answer-string driven.
+The strongest completed result remains the BM25 larger-corpus replication. At 3k corpus size, FAWE-Q2D is better than Query2doc in every counterfactual BM25 condition, with the largest gain on HotpotQA Entity+Value-CF (+0.1027). This supports the paper claim that FAWE-Q2D improves counterfactual utility over naive Query2doc concatenation for sparse retrieval.
 
-The cross-regime experiment clarifies the mechanism. Public generated expansions lose substantially on counterfactual corpora, confirming leakage or public-prior brittleness. However, counterfactual generation does not reliably recover performance. The more reliable recovery comes from preserving the counterfactual query as an anchor and using generated text as auxiliary evidence, especially through FAWE.
+The cross-regime experiment shows that public generations lose substantially on counterfactual corpora, confirming public-prior brittleness. Counterfactual generation alone does not reliably recover performance; anchoring and FAWE are the more reliable recovery mechanisms.
 
-Held-out beta selection strengthens the robustness story. Public-only tuning can choose larger beta values, but robust objectives prefer smaller beta values, and the averaged beta sweep peaks at beta 0.10 in both counterfactual regimes. This directly supports presenting FAWE as a controlled fielded integration method rather than unrestricted pseudo-document concatenation.
+The dense retriever extension supports a broader alias-sensitivity claim. BGE, E5, and Contriever all show large public-to-counterfactual query-only drops, especially on HotpotQA. Hybrid BM25+E5 mitigates but does not eliminate the drop.
 
-The expansion audit connects content to behavior. Candidate-injecting expansions are common and show larger excess drops, while anchored and FAWE variants reduce the damage. FAWE-Adapt is very stable but sacrifices effectiveness, so the paper should position FAWE-Q2D as the main method and FAWE-Adapt as a conservative deployment variant.
+The dense extension also constrains the FAWE claim. FAWE-Q2D helps BM25, E5, and hybrid retrieval on counterfactual averages, but not BGE or Contriever. The paper should present FAWE as a strong sparse and partly hybrid/E5 method, not as a universal dense-retrieval solution.
 
-The dense/generalized retriever claim remains unresolved because the dense/hybrid follow-up did not finish. The paper can keep the existing dense results as secondary evidence, but claims about BGE versus E5/Contriever/hybrid should wait until those missing runs complete.
+Held-out beta selection strengthens the robustness story: public-oriented tuning tolerates larger expansion weights, while robust objectives prefer small beta values. This supports the design principle that generated text should be an auxiliary field, not a replacement for the original query.
