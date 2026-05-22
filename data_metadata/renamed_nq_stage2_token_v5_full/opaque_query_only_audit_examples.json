@@ -1,0 +1,1828 @@
+{
+  "source_dataset": "nq_subset",
+  "renamed_dataset": "local:D:\\Desktop\\expected_answer_rag\\outputs\\renamed_nq_stage2_token_v5_full\\opaque",
+  "num_queries": 500,
+  "source_metrics": {
+    "recall@5": 0.438,
+    "recall@10": 0.57,
+    "recall@20": 0.6943333333333334,
+    "mrr@10": 0.33844682539682536,
+    "ndcg@10": 0.38178642931512197
+  },
+  "renamed_metrics": {
+    "recall@5": 0.438,
+    "recall@10": 0.57,
+    "recall@20": 0.6943333333333334,
+    "mrr@10": 0.33844682539682536,
+    "ndcg@10": 0.38178642931512197
+  },
+  "delta": {
+    "mrr@10": 0.0,
+    "ndcg@10": 0.0,
+    "recall@10": 0.0,
+    "recall@20": 0.0,
+    "recall@5": 0.0
+  },
+  "rank_change_counts": {
+    "same": 498,
+    "worse": 2
+  },
+  "replacement_stats": {
+    "num_mapping_rows": 2042,
+    "kind_counts": {
+      "ENTITY": 1794,
+      "NUMBER": 248
+    },
+    "replacement_minus_source_token_count": {
+      "0": 2042
+    },
+    "single_token_source_count": 2042,
+    "long_source_count": 0,
+    "common_source_count": 0,
+    "single_token_source_examples": [
+      "Habsburgermonarchie",
+      "Splodgenessabounds",
+      "Uniformitarianism",
+      "Dendrochronology",
+      "Parliamentarians",
+      "Buckinghamshire",
+      "Parliamentarian",
+      "Phosphocreatine",
+      "Representatives",
+      "Communications",
+      "Cnemidophorus",
+      "Massachusetts",
+      "Mediterranean",
+      "Protectionism",
+      "Revolutionary",
+      "Staffordshire",
+      "Vindhyavasini",
+      "Appalachians",
+      "Buddhiballav",
+      "Chainsmokers",
+      "Championship",
+      "Chandragupta",
+      "Constructors",
+      "Greensleeves",
+      "Jacksonville",
+      "Luftschlacht",
+      "Newfoundland",
+      "Pennsylvania",
+      "Philadelphia",
+      "WrestleMania"
+    ],
+    "long_source_examples": [],
+    "common_source_examples": []
+  },
+  "worst_regressions": [
+    {
+      "query_id": "test1",
+      "source_query": "how many episodes are in chicago fire season 4",
+      "renamed_query": "how many episodes are in Entity_2J0504 fire season 4",
+      "source_best_rank": 1,
+      "renamed_best_rank": 1,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc6",
+      "renamed_top_relevant": "doc6",
+      "query_replacements": [
+        {
+          "source": "Chicago",
+          "replacement": "Entity_2J0504",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        }
+      ],
+      "source_query_terms_missing_from_renamed_query": [
+        "chicago"
+      ],
+      "renamed_query_terms": [
+        "4",
+        "are",
+        "entity_2j0504",
+        "episodes",
+        "fire",
+        "how",
+        "in",
+        "many",
+        "season"
+      ],
+      "source_qrel_token_count": 46,
+      "renamed_qrel_token_count": 46,
+      "source_query_overlap_with_source_qrels": [
+        "4",
+        "chicago",
+        "episodes",
+        "fire",
+        "season"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "4",
+        "entity_2j0504",
+        "episodes",
+        "fire",
+        "season"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc6",
+          "score": 28.33960141349569,
+          "is_relevant": true,
+          "title": "Chicago Fire (season 4)",
+          "text": "Chicago Fire (season 4) The fourth season of Chicago Fire, an American drama television series with executive producer Dick Wolf, and producers Derek Haas, Michael Brandt, and Matt Olmstead, was ordered on February 5, 2015, by NBC,[1] and p"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc7",
+          "score": 24.03735869825841,
+          "is_relevant": false,
+          "title": "Chicago Fire (season 4)",
+          "text": "Chicago Fire (season 4) The show follows the lives of the firefighters and paramedics working at the Chicago Fire Department at the firehouse of Engine 51, Truck 81, Squad 3, Ambulance 61 and Battalion 25."
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc9",
+          "score": 19.19121853770411,
+          "is_relevant": false,
+          "title": "Chicago Fire (season 4)",
+          "text": "Chicago Fire (season 4) Hermann is rushed to Chicago Med after being stabbed at Molly's. After losing a lot a blood, it is determined he needs emergency surgery. Feeling guilty about Hermann's present state, Cruz searches for Freddy to turn"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc41643",
+          "score": 18.213038027257923,
+          "is_relevant": false,
+          "title": "Cash Cab (U.S. game show)",
+          "text": "Cash Cab (U.S. game show) During Season 6 of Cash Cab, a new spin-off series, Cash Cab: Chicago, hosted by comedian Beth Melewski and using the same rules as its New York counterpart, aired. The spin-off was cancelled after one season, but "
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc111768",
+          "score": 17.10505995055808,
+          "is_relevant": false,
+          "title": "List of DreamWorks Dragons episodes",
+          "text": "List of DreamWorks Dragons episodes DreamWorks Dragons is an American television series airing on Cartoon Network (for the first two seasons) and Netflix (after the second season) based on the 2010 film How to Train Your Dragon. The series "
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc6",
+          "score": 28.33963186096917,
+          "is_relevant": true,
+          "title": "Entity_2J0504 Fire (season 4)",
+          "text": "Entity_2J0504 Fire (season 4) The fourth season of Entity_2J0504 Fire, an American drama television series with executive producer Entity_HT1479 Wolf, and producers Entity_Y41206 Entity_J21512, Michael Entity_WN0788, and Entity_931567 Entit"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc7",
+          "score": 24.03737750703015,
+          "is_relevant": false,
+          "title": "Entity_2J0504 Fire (season 4)",
+          "text": "Entity_2J0504 Fire (season 4) The show follows the lives of the firefighters and paramedics working at the Entity_2J0504 Fire Department at the firehouse of Engine 51, Truck 81, Squad 3, Ambulance 61 and Battalion 25."
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc9",
+          "score": 19.19124522843339,
+          "is_relevant": false,
+          "title": "Entity_2J0504 Fire (season 4)",
+          "text": "Entity_2J0504 Fire (season 4) Entity_VF0563 is rushed to Entity_2J0504 Med after being stabbed at Molly's. After losing a lot a blood, it is determined he needs emergency surgery. Feeling guilty about Entity_VF0563's present state, Cruz sea"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc41643",
+          "score": 18.213062739878016,
+          "is_relevant": false,
+          "title": "Cash Cab (U.S. game show)",
+          "text": "Cash Cab (U.S. game show) During Season 6 of Cash Cab, a new spin-off series, Cash Cab: Entity_2J0504, hosted by comedian Entity_J21448 Melewski and using the same rules as its New York counterpart, aired. The spin-off was cancelled after o"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc111768",
+          "score": 17.10508531971223,
+          "is_relevant": false,
+          "title": "List of DreamWorks Dragons episodes",
+          "text": "List of DreamWorks Dragons episodes DreamWorks Dragons is an American television series airing on Cartoon Network (for the first two seasons) and Entity_ZB0631 (after the second season) based on the Number_K90169 film How to Train Your Enti"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc6",
+          "score": 1,
+          "source_title": "Chicago Fire (season 4)",
+          "renamed_title": "Entity_2J0504 Fire (season 4)",
+          "source_text": "Chicago Fire (season 4) The fourth season of Chicago Fire, an American drama television series with executive producer Dick Wolf, and producers Derek Haas, Michael Brandt, and Matt Olmstead, was ordered on February 5, 2015, by NBC,[1] and premiered on October 13, 2015 and concluded on May 17, 2016.[",
+          "renamed_text": "Entity_2J0504 Fire (season 4) The fourth season of Entity_2J0504 Fire, an American drama television series with executive producer Entity_HT1479 Wolf, and producers Entity_Y41206 Entity_J21512, Michael Entity_WN0788, and Entity_931567 Entity_6E0380, was ordered on February 5, Number_QC0174, by Entit"
+        }
+      ]
+    },
+    {
+      "query_id": "test103",
+      "source_query": "who did puerto rico belong to before the u.s",
+      "renamed_query": "who did Entity_CQ1026 Entity_J21608 belong to before the u.s",
+      "source_best_rank": 1,
+      "renamed_best_rank": 1,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc3559",
+      "renamed_top_relevant": "doc3559",
+      "query_replacements": [
+        {
+          "source": "Puerto",
+          "replacement": "Entity_CQ1026",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        },
+        {
+          "source": "Rico",
+          "replacement": "Entity_J21608",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        }
+      ],
+      "source_query_terms_missing_from_renamed_query": [
+        "puerto",
+        "rico"
+      ],
+      "renamed_query_terms": [
+        "before",
+        "belong",
+        "did",
+        "entity_cq1026",
+        "entity_j21608",
+        "s",
+        "the",
+        "to",
+        "u",
+        "who"
+      ],
+      "source_qrel_token_count": 137,
+      "renamed_qrel_token_count": 137,
+      "source_query_overlap_with_source_qrels": [
+        "did",
+        "puerto",
+        "rico",
+        "s",
+        "the",
+        "to",
+        "u"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "did",
+        "entity_cq1026",
+        "entity_j21608",
+        "s",
+        "the",
+        "to",
+        "u"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3559",
+          "score": 31.120527019361923,
+          "is_relevant": true,
+          "title": "Puerto Rico",
+          "text": "Puerto Rico On July 25, 1898, during the Spanish–American War, the U.S. invaded Puerto Rico with a landing at Guánica. As an outcome of the war, Spain ceded Puerto Rico, along with the Philippines and Guam, then under Spanish sovereignty, t"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc3670",
+          "score": 31.04222499161785,
+          "is_relevant": false,
+          "title": "Puerto Rico",
+          "text": "Puerto Rico Puerto Rican elections are governed by the Federal Election Commission and the State Elections Commission of Puerto Rico.[249][not in citation given][250][not in citation given] While residing in Puerto Rico, Puerto Ricans canno"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc3682",
+          "score": 31.026907884251603,
+          "is_relevant": false,
+          "title": "Puerto Rico",
+          "text": "Puerto Rico Puerto Ricans \"were collectively made U.S. citizens\" in 1917 as a result of the Jones-Shafroth Act.[259] U.S. citizens residing in Puerto Rico cannot vote for the U.S. president, though both major parties, Republican and Democra"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc76780",
+          "score": 30.97445069694589,
+          "is_relevant": false,
+          "title": "Commonwealth (U.S. insular area)",
+          "text": "Commonwealth (U.S. insular area) Of the current U.S. insular areas, the term was first used by Puerto Rico in 1952 as its formal name in English (\"Commonwealth of Puerto Rico\"). The formal name in Spanish for Puerto Rico is \"Estado Libre As"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc3700",
+          "score": 30.31132605316348,
+          "is_relevant": false,
+          "title": "Puerto Rico",
+          "text": "Puerto Rico The former U.S. Navy facilities at Roosevelt Roads, Vieques, and Sabana Seca have been deactivated and partially turned over to the local government. Other than U.S. Coast Guard and Puerto Rico National Guard facilities, there a"
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3559",
+          "score": 31.120559135130605,
+          "is_relevant": true,
+          "title": "Entity_CQ1026 Entity_J21608",
+          "text": "Entity_CQ1026 Entity_J21608 On July 25, Number_TZ0081, during the Spanish–American War, the U.S. invaded Entity_CQ1026 Entity_J21608 with a landing at Guánica. As an outcome of the war, Entity_E61380 ceded Entity_CQ1026 Entity_J21608, along"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc3670",
+          "score": 31.042250208456988,
+          "is_relevant": false,
+          "title": "Entity_CQ1026 Entity_J21608",
+          "text": "Entity_CQ1026 Entity_J21608 Entity_CQ1026 Rican elections are governed by the Federal Election Commission and the State Elections Commission of Entity_CQ1026 Entity_J21608.[249][not in citation given][250][not in citation given] While resid"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc3682",
+          "score": 31.02692994739916,
+          "is_relevant": false,
+          "title": "Entity_CQ1026 Entity_J21608",
+          "text": "Entity_CQ1026 Entity_J21608 Entity_CQ1026 Ricans \"were collectively made U.S. citizens\" in Number_2J0088 as a result of the Entity_TZ1265-Shafroth Act.[Number_RK0207] U.S. citizens residing in Entity_CQ1026 Entity_J21608 cannot vote for the"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc76780",
+          "score": 30.97447584150471,
+          "is_relevant": false,
+          "title": "Commonwealth (U.S. insular area)",
+          "text": "Commonwealth (U.S. insular area) Of the current U.S. insular areas, the term was first used by Entity_CQ1026 Entity_J21608 in Number_VF0115 as its formal name in English (\"Commonwealth of Entity_CQ1026 Entity_J21608\"). The formal name in Sp"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc3700",
+          "score": 30.311357374396387,
+          "is_relevant": false,
+          "title": "Entity_CQ1026 Entity_J21608",
+          "text": "Entity_CQ1026 Entity_J21608 The former U.S. Navy facilities at Entity_DX0227 Roads, Vieques, and Sabana Seca have been deactivated and partially turned over to the local government. Other than U.S. Coast Guard and Entity_CQ1026 Entity_J2160"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc3528",
+          "score": 1,
+          "source_title": "Puerto Rico",
+          "renamed_title": "Entity_CQ1026 Entity_J21608",
+          "source_text": "Puerto Rico Originally populated by the indigenous Taíno people, the island was claimed in 1493 by Christopher Columbus for Spain during his second voyage. Later it endured invasion attempts from the French, Dutch, and British. Four centuries of Spanish colonial government influenced the island's cu",
+          "renamed_text": "Entity_CQ1026 Entity_J21608 Originally populated by the indigenous Taíno people, the island was claimed in Number_K90009 by Entity_J20040 Entity_P50301 for Entity_E61380 during his second voyage. Later it endured invasion attempts from the French, Entity_7M1213, and British. Four centuries of Spanis"
+        },
+        {
+          "doc_id": "doc3559",
+          "score": 1,
+          "source_title": "Puerto Rico",
+          "renamed_title": "Entity_CQ1026 Entity_J21608",
+          "source_text": "Puerto Rico On July 25, 1898, during the Spanish–American War, the U.S. invaded Puerto Rico with a landing at Guánica. As an outcome of the war, Spain ceded Puerto Rico, along with the Philippines and Guam, then under Spanish sovereignty, to the U.S. under the Treaty of Paris, which went into effect",
+          "renamed_text": "Entity_CQ1026 Entity_J21608 On July 25, Number_TZ0081, during the Spanish–American War, the U.S. invaded Entity_CQ1026 Entity_J21608 with a landing at Guánica. As an outcome of the war, Entity_E61380 ceded Entity_CQ1026 Entity_J21608, along with the Entity_8U0062 and Entity_GL1510, then under Spanis"
+        }
+      ]
+    },
+    {
+      "query_id": "test105",
+      "source_query": "who plays dorian tyrell when he puts on the mask",
+      "renamed_query": "who plays dorian tyrell when he puts on the mask",
+      "source_best_rank": 1,
+      "renamed_best_rank": 1,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc3828",
+      "renamed_top_relevant": "doc3828",
+      "query_replacements": [],
+      "source_query_terms_missing_from_renamed_query": [],
+      "renamed_query_terms": [
+        "dorian",
+        "he",
+        "mask",
+        "on",
+        "plays",
+        "puts",
+        "the",
+        "tyrell",
+        "when",
+        "who"
+      ],
+      "source_qrel_token_count": 76,
+      "renamed_qrel_token_count": 76,
+      "source_query_overlap_with_source_qrels": [
+        "dorian",
+        "he",
+        "mask",
+        "the",
+        "tyrell"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "dorian",
+        "he",
+        "mask",
+        "the",
+        "tyrell"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3828",
+          "score": 29.043197236689,
+          "is_relevant": true,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) Stanley Ipkiss (Jim Carrey) is a shy and unlucky bank clerk working at the local Edge City bank. He is frequently ridiculed by everyone around him, except for his Jack Russell Terrier Milo, and his co-worker and best friend "
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc3833",
+          "score": 28.66137524554895,
+          "is_relevant": false,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) After locking Kellaway in his car, Stanley enters the club and manages to enlist the help of Charlie, but is soon after discovered and captured. Tina tricks Tyrell into taking off the mask, which is recovered and donned by M"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc3830",
+          "score": 26.230814492257316,
+          "is_relevant": false,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) The next morning, Stanley encounters detective Lieutenant Kellaway (Peter Riegert) and newspaper reporter Peggy Brandt (Amy Yasbeck) investigating the Mask's activity of the previous night. To attend Tina's performance, he a"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc3832",
+          "score": 25.93037160186507,
+          "is_relevant": false,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) When Tina visits Stanley in the station, he urges her to flee the city. Tina thanks Stanley for his generosity and tells him that she knew he was the Mask all along. She attempts to leave the city, but is captured by Tyrell'"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc3831",
+          "score": 24.6609637931026,
+          "is_relevant": false,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) Based on the piece of cloth, Kellaway suspects Stanley to be the bank robber. Stanley later consults a psychiatrist (Ben Stein) who has recently published a book on masks and is discovered that the object may be a depiction "
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3828",
+          "score": 29.043247168981495,
+          "is_relevant": true,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) Entity_6E0700 Entity_NW0908 (Entity_VF1715 Entity_DX0803) is a shy and unlucky Entity_E61444 clerk working at the local Edge City Entity_E61444. He is frequently ridiculed by everyone around him, except for his Entity_6E1532"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc3833",
+          "score": 28.66140439568241,
+          "is_relevant": false,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) After locking Kellaway in his car, Entity_6E0700 enters the club and manages to enlist the help of Entity_Y40502, but is soon after discovered and captured. Tina tricks Tyrell into taking off the mask, which is recovered and"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc3830",
+          "score": 26.23084704236162,
+          "is_relevant": false,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) The next morning, Entity_6E0700 encounters detective Entity_TZ0113 Kellaway (Entity_8U1342 Riegert) and newspaper reporter Peggy Entity_WN0788 (Entity_BH1665 Yasbeck) investigating the Mask's activity of the previous night. "
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc3832",
+          "score": 25.930410013353487,
+          "is_relevant": false,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) When Tina visits Entity_6E0700 in the station, he urges her to flee the city. Tina thanks Entity_6E0700 for his generosity and tells him that she knew he was the Mask all along. She attempts to leave the city, but is capture"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc3831",
+          "score": 24.661002630994048,
+          "is_relevant": false,
+          "title": "The Mask (film)",
+          "text": "The Mask (film) Based on the piece of cloth, Kellaway suspects Entity_6E0700 to be the Entity_E61444 robber. Entity_6E0700 later consults a psychiatrist (Entity_J21672 Stein) who has recently published a book on masks and is discovered that"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc3828",
+          "score": 1,
+          "source_title": "The Mask (film)",
+          "renamed_title": "The Mask (film)",
+          "source_text": "The Mask (film) Stanley Ipkiss (Jim Carrey) is a shy and unlucky bank clerk working at the local Edge City bank. He is frequently ridiculed by everyone around him, except for his Jack Russell Terrier Milo, and his co-worker and best friend Charlie Schumaker (Richard Jeni). Meanwhile, gangster Dorian",
+          "renamed_text": "The Mask (film) Entity_6E0700 Entity_NW0908 (Entity_VF1715 Entity_DX0803) is a shy and unlucky Entity_E61444 clerk working at the local Edge City Entity_E61444. He is frequently ridiculed by everyone around him, except for his Entity_6E1532 Entity_NW0684 Entity_FD0709 Entity_E61572, and his co-worke"
+        }
+      ]
+    },
+    {
+      "query_id": "test106",
+      "source_query": "who holds the world record for the most world records",
+      "renamed_query": "who holds the world record for the most world records",
+      "source_best_rank": 1,
+      "renamed_best_rank": 1,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc3852",
+      "renamed_top_relevant": "doc3852",
+      "query_replacements": [],
+      "source_query_terms_missing_from_renamed_query": [],
+      "renamed_query_terms": [
+        "for",
+        "holds",
+        "most",
+        "record",
+        "records",
+        "the",
+        "who",
+        "world"
+      ],
+      "source_qrel_token_count": 39,
+      "renamed_qrel_token_count": 39,
+      "source_query_overlap_with_source_qrels": [
+        "holds",
+        "most",
+        "record",
+        "records",
+        "the",
+        "world"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "holds",
+        "most",
+        "record",
+        "records",
+        "the",
+        "world"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3852",
+          "score": 31.85720018687354,
+          "is_relevant": true,
+          "title": "Ashrita Furman",
+          "text": "Ashrita Furman Ashrita Furman (born Keith Furman, September 16, 1954) is a Guinness World Records record-breaker. As of 2017, Furman has set more than 600 official Guinness Records and currently holds more than 191 records,[1] thus holding "
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc187139",
+          "score": 31.135117041729835,
+          "is_relevant": false,
+          "title": "Germany at the FIFA World Cup",
+          "text": "Germany at the FIFA World Cup Miroslav Klose, who is only one match behind, also holds the record for most victories at FIFA World Cups (17)."
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc79852",
+          "score": 28.79041845317621,
+          "is_relevant": false,
+          "title": "Boundary (cricket)",
+          "text": "Boundary (cricket) Shahid Afridi holds world record for most sixes in ODIs."
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc93380",
+          "score": 27.866607586478146,
+          "is_relevant": false,
+          "title": "Text messaging",
+          "text": "Text messaging Elliot Nicholls of Dunedin, New Zealand, currently holds the world record for the fastest blindfolded text messaging. A record of a 160-letter text in 45 seconds while blindfolded was set on 17 November 2007, beating the old "
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc31663",
+          "score": 27.81625208468401,
+          "is_relevant": false,
+          "title": "Guinness World Records",
+          "text": "Guinness World Records The book itself holds a world record, as the best-selling copyrighted book of all time. As of the 2017 edition, it is now in its 62nd year of publication, published in 100 countries and 23 languages. The international"
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3852",
+          "score": 31.85723257236809,
+          "is_relevant": true,
+          "title": "Entity_XV0469 Entity_930863",
+          "text": "Entity_XV0469 Entity_930863 Entity_XV0469 Entity_930863 (born Entity_WN1268 Entity_930863, September 16, Number_XV0117) is a Guinness World Records record-breaker. As of Number_SS0176, Entity_930863 has set more than Number_MP0235 official "
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc187139",
+          "score": 31.13513953497604,
+          "is_relevant": false,
+          "title": "Germany at the Entity_XV1493 World Entity_VF1683",
+          "text": "Germany at the Entity_XV1493 World Entity_VF1683 Miroslav Klose, who is only one match behind, also holds the record for most victories at Entity_XV1493 World Cups (17)."
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc79852",
+          "score": 28.790430589258015,
+          "is_relevant": false,
+          "title": "Boundary (cricket)",
+          "text": "Boundary (cricket) Shahid Afridi holds world record for most sixes in ODIs."
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc93380",
+          "score": 27.866653268227438,
+          "is_relevant": false,
+          "title": "Text messaging",
+          "text": "Text messaging Entity_TZ0849 Nicholls of Entity_TZ0529, New Entity_HT0743, currently holds the world record for the fastest blindfolded text messaging. A record of a Number_CQ0194-letter text in 45 seconds while blindfolded was set on 17 No"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc31663",
+          "score": 27.816286556210855,
+          "is_relevant": false,
+          "title": "Guinness World Records",
+          "text": "Guinness World Records The book itself holds a world record, as the best-selling copyrighted book of all time. As of the Number_SS0176 edition, it is now in its 62nd year of publication, published in Number_Y40182 countries and 23 languages"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc3852",
+          "score": 1,
+          "source_title": "Ashrita Furman",
+          "renamed_title": "Entity_XV0469 Entity_930863",
+          "source_text": "Ashrita Furman Ashrita Furman (born Keith Furman, September 16, 1954) is a Guinness World Records record-breaker. As of 2017, Furman has set more than 600 official Guinness Records and currently holds more than 191 records,[1] thus holding the most Guinness world records.[2] He has been breaking rec",
+          "renamed_text": "Entity_XV0469 Entity_930863 Entity_XV0469 Entity_930863 (born Entity_WN1268 Entity_930863, September 16, Number_XV0117) is a Guinness World Records record-breaker. As of Number_SS0176, Entity_930863 has set more than Number_MP0235 official Guinness Records and currently holds more than 191 records,["
+        }
+      ]
+    },
+    {
+      "query_id": "test117",
+      "source_query": "who was the war of 1812 fought between",
+      "renamed_query": "who was the war of Number_RK0047 fought between",
+      "source_best_rank": 1,
+      "renamed_best_rank": 1,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc4176",
+      "renamed_top_relevant": "doc4176",
+      "query_replacements": [
+        {
+          "source": "1812",
+          "replacement": "Number_RK0047",
+          "kind": "NUMBER",
+          "candidate_source": "relevant_doc_number_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        }
+      ],
+      "source_query_terms_missing_from_renamed_query": [
+        "1812"
+      ],
+      "renamed_query_terms": [
+        "between",
+        "fought",
+        "number_rk0047",
+        "of",
+        "the",
+        "war",
+        "was",
+        "who"
+      ],
+      "source_qrel_token_count": 34,
+      "renamed_qrel_token_count": 34,
+      "source_query_overlap_with_source_qrels": [
+        "1812",
+        "between",
+        "fought",
+        "of",
+        "the",
+        "war",
+        "was"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "between",
+        "fought",
+        "number_rk0047",
+        "of",
+        "the",
+        "war",
+        "was"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc4176",
+          "score": 27.544000728972655,
+          "is_relevant": true,
+          "title": "War of 1812",
+          "text": "War of 1812 The War of 1812 (1812–1815) was a conflict fought between the United States, the United Kingdom, and their respective allies. Historians in Britain often see it as a minor theatre of the Napoleonic Wars; in the United States and"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc4312",
+          "score": 23.176457232406037,
+          "is_relevant": false,
+          "title": "War of 1812",
+          "text": "War of 1812 Historian Troy Bickham, author of The Weight of Vengeance: The United States, the British Empire, and the War of 1812, sees the British as having fought to a much stronger position than the United States."
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc41384",
+          "score": 22.584966149005965,
+          "is_relevant": false,
+          "title": "Youth Day",
+          "text": "Youth Day Youth Day is celebrated on February 12.[6] The holiday was created to commemorate all the teenagers above 12 years old who fought and died in the Battle of La Victoria (1812), during the Venezuelan War of Independence, on February"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc47840",
+          "score": 22.000543834313074,
+          "is_relevant": false,
+          "title": "Thames River (Ontario)",
+          "text": "Thames River (Ontario) The river was the location of an important battle of the War of 1812. The Battle of the Thames (also known as the Battle of Moraviantown) was fought on October 5, 1813, between American General William Henry Harrison "
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc169658",
+          "score": 21.958890972040873,
+          "is_relevant": false,
+          "title": "List of War of 1812 Battles",
+          "text": "List of War of 1812 Battles The War of 1812 was fought in four major theaters on the North American continent: the Atlantic Coast, the Canada–US border, the Gulf Coast and the American West. In addition to these continental theaters of acti"
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc4176",
+          "score": 27.54402786410249,
+          "is_relevant": true,
+          "title": "War of Number_RK0047",
+          "text": "War of Number_RK0047 The War of Number_RK0047 (Number_RK0047–Number_SS0048) was a conflict fought between the United States, the United Kingdom, and their respective allies. Historians in Britain often see it as a minor Entity_GL0710 of the"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc4312",
+          "score": 23.176476387390274,
+          "is_relevant": false,
+          "title": "War of Number_RK0047",
+          "text": "War of Number_RK0047 Historian Troy Bickham, author of The Weight of Vengeance: The United States, the British Empire, and the War of Number_RK0047, sees the British as having fought to a much stronger position than the United States."
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc41384",
+          "score": 22.58499391278586,
+          "is_relevant": false,
+          "title": "Youth Day",
+          "text": "Youth Day Youth Day is celebrated on February 12.[6] The holiday was created to commemorate all the teenagers above 12 years old who fought and died in the Battle of La Entity_ZB0439 (Number_RK0047), during the Venezuelan War of Independenc"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc47840",
+          "score": 22.000574828627943,
+          "is_relevant": false,
+          "title": "Thames River (Entity_930639)",
+          "text": "Thames River (Entity_930639) The river was the location of an important battle of the War of Number_RK0047. The Battle of the Thames (also known as the Battle of Moraviantown) was fought on October 5, 1813, between American General William "
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc169658",
+          "score": 21.95891679134455,
+          "is_relevant": false,
+          "title": "List of War of Number_RK0047 Battles",
+          "text": "List of War of Number_RK0047 Battles The War of Number_RK0047 was fought in four major theaters on the North American continent: the Atlantic Coast, the Canada–US border, the Entity_HT1511 Coast and the American West. In addition to these c"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc4176",
+          "score": 1,
+          "source_title": "War of 1812",
+          "renamed_title": "War of Number_RK0047",
+          "source_text": "War of 1812 The War of 1812 (1812–1815) was a conflict fought between the United States, the United Kingdom, and their respective allies. Historians in Britain often see it as a minor theatre of the Napoleonic Wars; in the United States and Canada, it is seen as a war in its own right.",
+          "renamed_text": "War of Number_RK0047 The War of Number_RK0047 (Number_RK0047–Number_SS0048) was a conflict fought between the United States, the United Kingdom, and their respective allies. Historians in Britain often see it as a minor Entity_GL0710 of the Napoleonic Entity_QC1646; in the United States and Canada, "
+        }
+      ]
+    }
+  ],
+  "rank_regressions": [
+    {
+      "query_id": "test175",
+      "source_query": "when was the abacus invented in ancient china",
+      "renamed_query": "when was the Entity_K90745 invented in ancient china",
+      "source_best_rank": 17,
+      "renamed_best_rank": 18,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc6385",
+      "renamed_top_relevant": "doc6385",
+      "query_replacements": [
+        {
+          "source": "Abacus",
+          "replacement": "Entity_K90745",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        }
+      ],
+      "source_query_terms_missing_from_renamed_query": [
+        "abacus"
+      ],
+      "renamed_query_terms": [
+        "ancient",
+        "china",
+        "entity_k90745",
+        "in",
+        "invented",
+        "the",
+        "was",
+        "when"
+      ],
+      "source_qrel_token_count": 14,
+      "renamed_qrel_token_count": 14,
+      "source_query_overlap_with_source_qrels": [
+        "abacus",
+        "the"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "entity_k90745",
+        "the"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc6385",
+          "score": 26.59506922024159,
+          "is_relevant": false,
+          "title": "Abacus",
+          "text": "Abacus There is no clear evidence for use of the abacus in India. The decimal number system invented in India replaced the abacus in Western Europe.[28]"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc6402",
+          "score": 23.04570005408956,
+          "is_relevant": false,
+          "title": "Abacus",
+          "text": "Abacus An adapted abacus, invented by Tim Cranmer, called a Cranmer abacus is still commonly used by individuals who are blind. A piece of soft fabric or rubber is placed behind the beads so that they do not move inadvertently. This keeps t"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc6388",
+          "score": 22.49768228407058,
+          "is_relevant": false,
+          "title": "Abacus",
+          "text": "Abacus The Chinese abacus migrated from China to Korea around 1400 AD.[18][34][35] Koreans call it jupan (주판), supan (수판) or jusan (주산).[36]"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc6373",
+          "score": 21.98958360886426,
+          "is_relevant": false,
+          "title": "Abacus",
+          "text": "Abacus During the Achaemenid Empire, around 600 BC the Persians first began to use the abacus.[16] Under the Parthian, Sassanian and Iranian empires, scholars concentrated on exchanging knowledge and inventions with the countries around the"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc94739",
+          "score": 21.64337486732327,
+          "is_relevant": false,
+          "title": "Computer",
+          "text": "Computer The abacus was initially used for arithmetic tasks. The Roman abacus was developed from devices used in Babylonia as early as 2400 BC. Since then, many other forms of reckoning boards or tables have been invented. In a medieval Eur"
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc6385",
+          "score": 26.595083623369838,
+          "is_relevant": false,
+          "title": "Entity_K90745",
+          "text": "Entity_K90745 There is no clear evidence for use of the Entity_K90745 in India. The decimal number system invented in India replaced the Entity_K90745 in Western Europe.[28]"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc6402",
+          "score": 23.045723572446892,
+          "is_relevant": false,
+          "title": "Entity_K90745",
+          "text": "Entity_K90745 An adapted Entity_K90745, invented by Entity_Y41782 Cranmer, called a Cranmer Entity_K90745 is still commonly used by individuals who are blind. A piece of soft fabric or rubber is placed behind the beads so that they do not m"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc6388",
+          "score": 22.497694561469164,
+          "is_relevant": false,
+          "title": "Entity_K90745",
+          "text": "Entity_K90745 The Entity_570507 Entity_K90745 migrated from China to Entity_2J1272 around 1400 AD.[18][34][35] Koreans call it jupan (주판), supan (수판) or jusan (주산).[36]"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc6373",
+          "score": 21.98960768162147,
+          "is_relevant": false,
+          "title": "Entity_K90745",
+          "text": "Entity_K90745 During the Achaemenid Empire, around Number_MP0235 BC the Persians first began to use the Entity_K90745.[16] Under the Parthian, Sassanian and Iranian empires, scholars concentrated on exchanging knowledge and inventions with "
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc94739",
+          "score": 21.64340321346549,
+          "is_relevant": false,
+          "title": "Computer",
+          "text": "Computer The Entity_K90745 was initially used for arithmetic tasks. The Roman Entity_K90745 was developed from devices used in Babylonia as early as 2400 BC. Since then, many other forms of reckoning boards or tables have been invented. In "
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc6376",
+          "score": 1,
+          "source_title": "Abacus",
+          "renamed_title": "Entity_K90745",
+          "source_text": "Abacus The earliest known written documentation of the Chinese abacus dates to the 2nd century BC.[21]",
+          "renamed_text": "Entity_K90745 The earliest known written documentation of the Entity_570507 Entity_K90745 dates to the 2nd century BC.[21]"
+        }
+      ]
+    },
+    {
+      "query_id": "test442",
+      "source_query": "how many death stars are there in star wars",
+      "renamed_query": "how many death stars are there in star Entity_QC1646",
+      "source_best_rank": 69,
+      "renamed_best_rank": 70,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc16503",
+      "renamed_top_relevant": "doc16503",
+      "query_replacements": [
+        {
+          "source": "Wars",
+          "replacement": "Entity_QC1646",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        }
+      ],
+      "source_query_terms_missing_from_renamed_query": [
+        "wars"
+      ],
+      "renamed_query_terms": [
+        "are",
+        "death",
+        "entity_qc1646",
+        "how",
+        "in",
+        "many",
+        "star",
+        "stars",
+        "there"
+      ],
+      "source_qrel_token_count": 99,
+      "renamed_qrel_token_count": 99,
+      "source_query_overlap_with_source_qrels": [
+        "death",
+        "in",
+        "star",
+        "wars"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "death",
+        "entity_qc1646",
+        "in",
+        "star"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc16503",
+          "score": 29.368468012887675,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star Kenner and AMT created a playset and a model, respectively, of the first Death Star.[36][37] In 2005 and 2008, Lego released models of Death Star II and Death Star I, respectively.[38][39] In 1979, Palitoy created a heavy card ve"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc16491",
+          "score": 28.97585761853557,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star Both Death Stars appear throughout the non-canonical Star Wars Legends (formerly known as the Expanded Universe).[citation needed]"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc16480",
+          "score": 25.585180172116196,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star The first Death Star's schematics are visible in the scenes on Geonosis in Star Wars: Episode II – Attack of the Clones showcasing the early development of the Death Star prototype, the Death Star plans were designed by Geonosian"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc16477",
+          "score": 24.98776684335343,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star These are depictions of the Death Star and other similar weapons of mass destruction within the Star Wars canon."
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc16488",
+          "score": 24.79540203163478,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star The Death Star II is featured in the cover of the book Star Wars: Aftermath (2015), which also features many flashbacks to the destruction of the Death Star II, as well as the events directly after its destruction. One of the mai"
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc16503",
+          "score": 29.368503227008958,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star Kenner and AMT created a playset and a model, respectively, of the first Death Star.[36][37] In Number_E60164 and Number_HT0167, Lego released models of Death Star II and Death Star I, respectively.[38][39] In Number_MP0139, Pali"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc16491",
+          "score": 28.975873723908748,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star Both Death Stars appear throughout the non-canonical Star Entity_QC1646 Legends (formerly known as the Expanded Universe).[citation needed]"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc16480",
+          "score": 25.585203289964007,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star The first Death Star's schematics are visible in the scenes on Geonosis in Star Entity_QC1646: Episode II – Attack of the Clones showcasing the early development of the Death Star prototype, the Death Star plans were designed by "
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc16477",
+          "score": 24.987779067624544,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star These are depictions of the Death Star and other similar weapons of mass destruction within the Star Entity_QC1646 canon."
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc16488",
+          "score": 24.795428599251206,
+          "is_relevant": false,
+          "title": "Death Star",
+          "text": "Death Star The Death Star II is featured in the cover of the book Star Entity_QC1646: Aftermath (Number_QC0174), which also features many flashbacks to the destruction of the Death Star II, as well as the events directly after its destructi"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc16473",
+          "score": 1,
+          "source_title": "Death Star",
+          "renamed_title": "Death Star",
+          "source_text": "Death Star Death Star is the name of a number of fictional mobile space stations and galactic superweapons featured in the Star Wars space opera franchise. The first Death Star was stated to be more than 100 km to 160 km in diameter, depending on source. It was crewed by an estimated 1.7 million mil",
+          "renamed_text": "Death Star Death Star is the name of a number of fictional mobile space stations and galactic superweapons featured in the Star Entity_QC1646 space opera franchise. The first Death Star was stated to be more than Number_Y40182 km to Number_CQ0194 km in diameter, depending on source. It was crewed by"
+        }
+      ]
+    }
+  ],
+  "largest_improvements": [
+    {
+      "query_id": "test0",
+      "source_query": "what is non controlling interest on balance sheet",
+      "renamed_query": "what is non controlling interest on balance sheet",
+      "source_best_rank": 2,
+      "renamed_best_rank": 2,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc5",
+      "renamed_top_relevant": "doc5",
+      "query_replacements": [],
+      "source_query_terms_missing_from_renamed_query": [],
+      "renamed_query_terms": [
+        "balance",
+        "controlling",
+        "interest",
+        "is",
+        "non",
+        "on",
+        "sheet",
+        "what"
+      ],
+      "source_qrel_token_count": 74,
+      "renamed_qrel_token_count": 74,
+      "source_query_overlap_with_source_qrels": [
+        "balance",
+        "controlling",
+        "interest",
+        "is",
+        "non",
+        "on",
+        "sheet"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "balance",
+        "controlling",
+        "interest",
+        "is",
+        "non",
+        "on",
+        "sheet"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc5",
+          "score": 43.29083069453105,
+          "is_relevant": false,
+          "title": "Minority interest",
+          "text": "Minority interest Under the International Financial Reporting Standards, the non-controlling interest is reported in accordance with IFRS 5 and is shown at the very bottom of the Equity section on the consolidated balance sheet and subseque"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc1",
+          "score": 37.83401253214911,
+          "is_relevant": true,
+          "title": "Minority interest",
+          "text": "Minority interest It is, however, possible (such as through special voting rights) for a controlling interest requiring consolidation to be achieved without exceeding 50% ownership, depending on the accounting standards being employed. Mino"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc0",
+          "score": 22.56855069962404,
+          "is_relevant": true,
+          "title": "Minority interest",
+          "text": "Minority interest In accounting, minority interest (or non-controlling interest) is the portion of a subsidiary corporation's stock that is not owned by the parent corporation. The magnitude of the minority interest in the subsidiary compan"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc175430",
+          "score": 21.59949046507412,
+          "is_relevant": false,
+          "title": "Asset",
+          "text": "Asset Assets are listed on the balance sheet. On a company's balance sheet certain divisions are required by generally accepted accounting principles (GAAP), which vary from country to country.[9] Assets can be divided into e.g. current ass"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc42068",
+          "score": 21.345565467008164,
+          "is_relevant": false,
+          "title": "Transtheoretical model",
+          "text": "Transtheoretical model This core construct \"reflects the individual's relative weighing of the pros and cons of changing\".[16][nb 5] Decision making was conceptualized by Janis and Mann as a \"decisional balance sheet\" of comparative potenti"
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc5",
+          "score": 43.29088768764647,
+          "is_relevant": false,
+          "title": "Minority interest",
+          "text": "Minority interest Under the International Financial Reporting Standards, the non-controlling interest is reported in accordance with IFRS 5 and is shown at the very bottom of the Equity section on the consolidated balance sheet and subseque"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc1",
+          "score": 37.834064469923334,
+          "is_relevant": true,
+          "title": "Minority interest",
+          "text": "Minority interest It is, however, possible (such as through special voting rights) for a controlling interest requiring consolidation to be achieved without exceeding 50% ownership, depending on the accounting standards being employed. Mino"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc0",
+          "score": 22.56857541779955,
+          "is_relevant": true,
+          "title": "Minority interest",
+          "text": "Minority interest In accounting, minority interest (or non-controlling interest) is the portion of a subsidiary corporation's stock that is not owned by the parent corporation. The magnitude of the minority interest in the subsidiary compan"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc175430",
+          "score": 21.599510618488715,
+          "is_relevant": false,
+          "title": "Asset",
+          "text": "Asset Assets are listed on the balance sheet. On a company's balance sheet certain divisions are required by generally accepted accounting principles (GAAP), which vary from country to country.[9] Assets can be divided into e.g. current ass"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc42068",
+          "score": 21.34559110204269,
+          "is_relevant": false,
+          "title": "Transtheoretical model",
+          "text": "Transtheoretical model This core construct \"reflects the individual's relative weighing of the pros and cons of changing\".[16][nb 5] Decision making was conceptualized by Janis and Entity_4Y1562 as a \"decisional balance sheet\" of comparativ"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc0",
+          "score": 1,
+          "source_title": "Minority interest",
+          "renamed_title": "Minority interest",
+          "source_text": "Minority interest In accounting, minority interest (or non-controlling interest) is the portion of a subsidiary corporation's stock that is not owned by the parent corporation. The magnitude of the minority interest in the subsidiary company is generally less than 50% of outstanding shares, or the c",
+          "renamed_text": "Minority interest In accounting, minority interest (or non-controlling interest) is the portion of a subsidiary corporation's stock that is not owned by the parent corporation. The magnitude of the minority interest in the subsidiary company is generally less than 50% of outstanding shares, or the c"
+        },
+        {
+          "doc_id": "doc1",
+          "score": 1,
+          "source_title": "Minority interest",
+          "renamed_title": "Minority interest",
+          "source_text": "Minority interest It is, however, possible (such as through special voting rights) for a controlling interest requiring consolidation to be achieved without exceeding 50% ownership, depending on the accounting standards being employed. Minority interest belongs to other investors and is reported on ",
+          "renamed_text": "Minority interest It is, however, possible (such as through special voting rights) for a controlling interest requiring consolidation to be achieved without exceeding 50% ownership, depending on the accounting standards being employed. Minority interest belongs to other investors and is reported on "
+        }
+      ]
+    },
+    {
+      "query_id": "test1",
+      "source_query": "how many episodes are in chicago fire season 4",
+      "renamed_query": "how many episodes are in Entity_2J0504 fire season 4",
+      "source_best_rank": 1,
+      "renamed_best_rank": 1,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc6",
+      "renamed_top_relevant": "doc6",
+      "query_replacements": [
+        {
+          "source": "Chicago",
+          "replacement": "Entity_2J0504",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        }
+      ],
+      "source_query_terms_missing_from_renamed_query": [
+        "chicago"
+      ],
+      "renamed_query_terms": [
+        "4",
+        "are",
+        "entity_2j0504",
+        "episodes",
+        "fire",
+        "how",
+        "in",
+        "many",
+        "season"
+      ],
+      "source_qrel_token_count": 46,
+      "renamed_qrel_token_count": 46,
+      "source_query_overlap_with_source_qrels": [
+        "4",
+        "chicago",
+        "episodes",
+        "fire",
+        "season"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "4",
+        "entity_2j0504",
+        "episodes",
+        "fire",
+        "season"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc6",
+          "score": 28.33960141349569,
+          "is_relevant": true,
+          "title": "Chicago Fire (season 4)",
+          "text": "Chicago Fire (season 4) The fourth season of Chicago Fire, an American drama television series with executive producer Dick Wolf, and producers Derek Haas, Michael Brandt, and Matt Olmstead, was ordered on February 5, 2015, by NBC,[1] and p"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc7",
+          "score": 24.03735869825841,
+          "is_relevant": false,
+          "title": "Chicago Fire (season 4)",
+          "text": "Chicago Fire (season 4) The show follows the lives of the firefighters and paramedics working at the Chicago Fire Department at the firehouse of Engine 51, Truck 81, Squad 3, Ambulance 61 and Battalion 25."
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc9",
+          "score": 19.19121853770411,
+          "is_relevant": false,
+          "title": "Chicago Fire (season 4)",
+          "text": "Chicago Fire (season 4) Hermann is rushed to Chicago Med after being stabbed at Molly's. After losing a lot a blood, it is determined he needs emergency surgery. Feeling guilty about Hermann's present state, Cruz searches for Freddy to turn"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc41643",
+          "score": 18.213038027257923,
+          "is_relevant": false,
+          "title": "Cash Cab (U.S. game show)",
+          "text": "Cash Cab (U.S. game show) During Season 6 of Cash Cab, a new spin-off series, Cash Cab: Chicago, hosted by comedian Beth Melewski and using the same rules as its New York counterpart, aired. The spin-off was cancelled after one season, but "
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc111768",
+          "score": 17.10505995055808,
+          "is_relevant": false,
+          "title": "List of DreamWorks Dragons episodes",
+          "text": "List of DreamWorks Dragons episodes DreamWorks Dragons is an American television series airing on Cartoon Network (for the first two seasons) and Netflix (after the second season) based on the 2010 film How to Train Your Dragon. The series "
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc6",
+          "score": 28.33963186096917,
+          "is_relevant": true,
+          "title": "Entity_2J0504 Fire (season 4)",
+          "text": "Entity_2J0504 Fire (season 4) The fourth season of Entity_2J0504 Fire, an American drama television series with executive producer Entity_HT1479 Wolf, and producers Entity_Y41206 Entity_J21512, Michael Entity_WN0788, and Entity_931567 Entit"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc7",
+          "score": 24.03737750703015,
+          "is_relevant": false,
+          "title": "Entity_2J0504 Fire (season 4)",
+          "text": "Entity_2J0504 Fire (season 4) The show follows the lives of the firefighters and paramedics working at the Entity_2J0504 Fire Department at the firehouse of Engine 51, Truck 81, Squad 3, Ambulance 61 and Battalion 25."
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc9",
+          "score": 19.19124522843339,
+          "is_relevant": false,
+          "title": "Entity_2J0504 Fire (season 4)",
+          "text": "Entity_2J0504 Fire (season 4) Entity_VF0563 is rushed to Entity_2J0504 Med after being stabbed at Molly's. After losing a lot a blood, it is determined he needs emergency surgery. Feeling guilty about Entity_VF0563's present state, Cruz sea"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc41643",
+          "score": 18.213062739878016,
+          "is_relevant": false,
+          "title": "Cash Cab (U.S. game show)",
+          "text": "Cash Cab (U.S. game show) During Season 6 of Cash Cab, a new spin-off series, Cash Cab: Entity_2J0504, hosted by comedian Entity_J21448 Melewski and using the same rules as its New York counterpart, aired. The spin-off was cancelled after o"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc111768",
+          "score": 17.10508531971223,
+          "is_relevant": false,
+          "title": "List of DreamWorks Dragons episodes",
+          "text": "List of DreamWorks Dragons episodes DreamWorks Dragons is an American television series airing on Cartoon Network (for the first two seasons) and Entity_ZB0631 (after the second season) based on the Number_K90169 film How to Train Your Enti"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc6",
+          "score": 1,
+          "source_title": "Chicago Fire (season 4)",
+          "renamed_title": "Entity_2J0504 Fire (season 4)",
+          "source_text": "Chicago Fire (season 4) The fourth season of Chicago Fire, an American drama television series with executive producer Dick Wolf, and producers Derek Haas, Michael Brandt, and Matt Olmstead, was ordered on February 5, 2015, by NBC,[1] and premiered on October 13, 2015 and concluded on May 17, 2016.[",
+          "renamed_text": "Entity_2J0504 Fire (season 4) The fourth season of Entity_2J0504 Fire, an American drama television series with executive producer Entity_HT1479 Wolf, and producers Entity_Y41206 Entity_J21512, Michael Entity_WN0788, and Entity_931567 Entity_6E0380, was ordered on February 5, Number_QC0174, by Entit"
+        }
+      ]
+    },
+    {
+      "query_id": "test10",
+      "source_query": "when is the new tappan zee bridge going to be finished",
+      "renamed_query": "when is the new Entity_AA1088 Entity_CQ1794 Entity_2J0792 going to be finished",
+      "source_best_rank": 7,
+      "renamed_best_rank": 7,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc116",
+      "renamed_top_relevant": "doc116",
+      "query_replacements": [
+        {
+          "source": "Bridge",
+          "replacement": "Entity_2J0792",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        },
+        {
+          "source": "Tappan",
+          "replacement": "Entity_AA1088",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        },
+        {
+          "source": "Zee",
+          "replacement": "Entity_CQ1794",
+          "kind": "ENTITY",
+          "candidate_source": "title_anchor_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        }
+      ],
+      "source_query_terms_missing_from_renamed_query": [
+        "bridge",
+        "tappan",
+        "zee"
+      ],
+      "renamed_query_terms": [
+        "be",
+        "entity_2j0792",
+        "entity_aa1088",
+        "entity_cq1794",
+        "finished",
+        "going",
+        "is",
+        "new",
+        "the",
+        "to",
+        "when"
+      ],
+      "source_qrel_token_count": 45,
+      "renamed_qrel_token_count": 45,
+      "source_query_overlap_with_source_qrels": [
+        "be",
+        "bridge",
+        "tappan",
+        "the",
+        "to",
+        "zee"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "be",
+        "entity_2j0792",
+        "entity_aa1088",
+        "entity_cq1794",
+        "the",
+        "to"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc116",
+          "score": 50.88801869690756,
+          "is_relevant": false,
+          "title": "Tappan Zee Bridge (2017–present)",
+          "text": "Tappan Zee Bridge (2017–present) The Tappan Zee Bridge, officially named the Governor Mario M. Cuomo Bridge after former New York Governor Mario Cuomo, is a twin cable-stayed bridge being built to replace the original Tappan Zee Bridge over"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc124",
+          "score": 47.77930356745157,
+          "is_relevant": false,
+          "title": "Tappan Zee Bridge (2017–present)",
+          "text": "Tappan Zee Bridge (2017–present) The new Tappan Zee Bridge was proposed to include four vehicle lanes on each span, for a total of eight lanes, as well as a shared-use bicycle and pedestrian path. Like its predecessor, the new Tappan Zee Br"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc128",
+          "score": 46.08659714450179,
+          "is_relevant": false,
+          "title": "Tappan Zee Bridge (2017–present)",
+          "text": "Tappan Zee Bridge (2017–present) When completed, the new Tappan Zee Bridge will be one of the widest cable-stayed bridges in the world, having a combined width across both decks of 183 feet (56 m).[2] The new spans will equal the width of t"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc133",
+          "score": 45.82839576871781,
+          "is_relevant": false,
+          "title": "Tappan Zee Bridge (2017–present)",
+          "text": "Tappan Zee Bridge (2017–present) During construction, the project's website referred to the crossing as the \"New NY Bridge\".[30] However, other sources referred to the crossing as the \"New Tappan Zee Bridge\".[31][32]"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc119",
+          "score": 44.85832667961039,
+          "is_relevant": false,
+          "title": "Tappan Zee Bridge (2017–present)",
+          "text": "Tappan Zee Bridge (2017–present) The original Tappan Zee Bridge was a cantilever bridge built during 1952–1955. The bridge was 3 miles (4.8 km) long and spanned the Hudson at its second-widest point. The Tappan Zee river crossing was named "
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc116",
+          "score": 50.888058305751585,
+          "is_relevant": false,
+          "title": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present)",
+          "text": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present) The Entity_AA1088 Entity_CQ1794 Entity_2J0792, officially named the Entity_AA0320 Mario M. Cuomo Entity_2J0792 after former New York Entity_AA0320 Mario Cuomo, is a twin cabl"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc124",
+          "score": 47.77934749114446,
+          "is_relevant": false,
+          "title": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present)",
+          "text": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present) The new Entity_AA1088 Entity_CQ1794 Entity_2J0792 was proposed to include four vehicle lanes on each span, for a total of eight lanes, as well as a shared-use bicycle and ped"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc128",
+          "score": 46.08664899437549,
+          "is_relevant": false,
+          "title": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present)",
+          "text": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present) When completed, the new Entity_AA1088 Entity_CQ1794 Entity_2J0792 will be one of the widest cable-stayed bridges in the world, having a combined width across both decks of 18"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc133",
+          "score": 45.828425168203786,
+          "is_relevant": false,
+          "title": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present)",
+          "text": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present) During construction, the project's website referred to the crossing as the \"New NY Entity_2J0792\".[30] However, other sources referred to the crossing as the \"New Entity_AA10"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc119",
+          "score": 44.85836465539557,
+          "is_relevant": false,
+          "title": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present)",
+          "text": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present) The original Entity_AA1088 Entity_CQ1794 Entity_2J0792 was a cantilever Entity_2J0792 built during Number_VF0115–Number_Y40118. The Entity_2J0792 was 3 miles (4.8 km) long an"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc118",
+          "score": 1,
+          "source_title": "Tappan Zee Bridge (2017–present)",
+          "renamed_title": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present)",
+          "source_text": "Tappan Zee Bridge (2017–present) Tappan Zee Constructors began construction in 2013. The north span officially opened to westbound traffic on August 26, 2017; it also opened to eastbound traffic on October 6, 2017. Tappan Zee Constructors then began demolishing the old bridge. Eastbound traffic will",
+          "renamed_text": "Entity_AA1088 Entity_CQ1794 Entity_2J0792 (Number_SS0176–present) Entity_AA1088 Entity_CQ1794 Entity_ZB0023 began construction in Number_NW0172. The north span officially opened to westbound traffic on August 26, Number_SS0176; it also opened to eastbound traffic on October 6, Number_SS0176. Entity_"
+        }
+      ]
+    },
+    {
+      "query_id": "test100",
+      "source_query": "why do red blood cells live for only 120 days",
+      "renamed_query": "why do red blood cells live for only 120 days",
+      "source_best_rank": 68,
+      "renamed_best_rank": 68,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc3254",
+      "renamed_top_relevant": "doc3254",
+      "query_replacements": [],
+      "source_query_terms_missing_from_renamed_query": [],
+      "renamed_query_terms": [
+        "120",
+        "blood",
+        "cells",
+        "days",
+        "do",
+        "for",
+        "live",
+        "only",
+        "red",
+        "why"
+      ],
+      "source_qrel_token_count": 116,
+      "renamed_qrel_token_count": 116,
+      "source_query_overlap_with_source_qrels": [
+        "blood",
+        "cells",
+        "red"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "blood",
+        "cells",
+        "red"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3254",
+          "score": 43.27063617459663,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell Human red blood cells are produced through a process named erythropoiesis, developing from committed stem cells to mature red blood cells in about 7 days. When matured, in a healthy individual these cells live in blood circul"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc3221",
+          "score": 33.28650416506244,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell Almost all vertebrates, including all mammals and humans, have red blood cells. Red blood cells are cells present in blood in order to transport oxygen. The only known vertebrates without red blood cells are the crocodile ice"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc3219",
+          "score": 32.98096344980135,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell In humans, mature red blood cells are flexible and oval biconcave disks. They lack a cell nucleus and most organelles, in order to accommodate maximum space for hemoglobin; they can be viewed as sacks of hemoglobin, with a pl"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc3256",
+          "score": 32.906799714756566,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell The functional lifetime of an red blood cell is about 100â€“120 days, during which time the red blood cells are continually moved by the blood flow push (in arteries), pull (in veins) and a combination of the two as they sque"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc3226",
+          "score": 30.417652834904395,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell Red blood cells in mammals are unique amongst vertebrates as they do not have nuclei when mature. Red blood cells of mammals cells have nuclei during early phases of erythropoiesis, but extrude them during development as they"
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3254",
+          "score": 43.270680288667265,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell Human red blood cells are produced through a process named erythropoiesis, developing from committed stem cells to mature red blood cells in about 7 days. When matured, in a healthy individual these cells live in blood circul"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc3221",
+          "score": 33.286534279427514,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell Almost all vertebrates, including all mammals and humans, have red blood cells. Red blood cells are cells present in blood in order to transport oxygen. The only known vertebrates without red blood cells are the crocodile ice"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc3219",
+          "score": 32.98100663741529,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell In humans, mature red blood cells are flexible and oval biconcave disks. They lack a cell nucleus and most organelles, in order to accommodate maximum space for hemoglobin; they can be viewed as sacks of hemoglobin, with a pl"
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc3256",
+          "score": 32.906835508496776,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell The functional lifetime of an red blood cell is about Number_Y40182â€“120 days, during which time the red blood cells are continually moved by the blood flow push (in arteries), pull (in veins) and a combination of the two as"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc3226",
+          "score": 30.417680046178315,
+          "is_relevant": false,
+          "title": "Red blood cell",
+          "text": "Red blood cell Red blood cells in mammals are unique amongst vertebrates as they do not have nuclei when mature. Red blood cells of mammals cells have nuclei during early phases of erythropoiesis, but extrude them during development as they"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc3257",
+          "score": 1,
+          "source_title": "Red blood cell",
+          "renamed_title": "Red blood cell",
+          "source_text": "Red blood cell The aging red blood cell undergoes changes in its plasma membrane, making it susceptible to selective recognition by macrophages and subsequent phagocytosis in the mononuclear phagocyte system (spleen, liver and lymph nodes), thus removing old and defective cells and continually purgi",
+          "renamed_text": "Red blood cell The aging red blood cell undergoes changes in its plasma membrane, making it susceptible to selective recognition by macrophages and subsequent phagocytosis in the mononuclear phagocyte system (spleen, liver and lymph nodes), thus removing old and defective cells and continually purgi"
+        }
+      ]
+    },
+    {
+      "query_id": "test101",
+      "source_query": "nba record for most double doubles in a season",
+      "renamed_query": "Entity_LG1738 record for most double doubles in a season",
+      "source_best_rank": 16,
+      "renamed_best_rank": 16,
+      "rr_delta": 0.0,
+      "source_top_relevant": "doc3273",
+      "renamed_top_relevant": "doc3273",
+      "query_replacements": [
+        {
+          "source": "NBA",
+          "replacement": "Entity_LG1738",
+          "kind": "ENTITY",
+          "candidate_source": "relevant_doc_entity_token",
+          "source_token_count": 1,
+          "replacement_token_count": 1,
+          "token_count_delta": 0
+        }
+      ],
+      "source_query_terms_missing_from_renamed_query": [
+        "nba"
+      ],
+      "renamed_query_terms": [
+        "a",
+        "double",
+        "doubles",
+        "entity_lg1738",
+        "for",
+        "in",
+        "most",
+        "record",
+        "season"
+      ],
+      "source_qrel_token_count": 40,
+      "renamed_qrel_token_count": 40,
+      "source_query_overlap_with_source_qrels": [
+        "a",
+        "double",
+        "in",
+        "most",
+        "nba",
+        "season"
+      ],
+      "renamed_query_overlap_with_renamed_qrels": [
+        "a",
+        "double",
+        "entity_lg1738",
+        "in",
+        "most",
+        "season"
+      ],
+      "source_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3273",
+          "score": 39.6562869601735,
+          "is_relevant": false,
+          "title": "Double (basketball)",
+          "text": "Double (basketball) A triple-double is the accumulation of a double-digit number total in three of the five categories in a game. The most common way to achieve a triple-double is through points, rebounds, and assists. Oscar Robertson leads"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc3277",
+          "score": 34.97314428221466,
+          "is_relevant": false,
+          "title": "Double (basketball)",
+          "text": "Double (basketball) Special double-doubles are rare. One such double-double is called double double-double (also referred to as 20–20 or Double-20). It occurs when a player accumulates 20 or more in two different statistical categories in a"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc3276",
+          "score": 34.81055576704526,
+          "is_relevant": false,
+          "title": "Double (basketball)",
+          "text": "Double (basketball) A double-double is defined as a performance in which a player accumulates a double-digit number total in two of five statistical categories—points, rebounds, assists, steals, and blocked shots—in a game. The most common "
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc3282",
+          "score": 32.31982219970434,
+          "is_relevant": false,
+          "title": "Double (basketball)",
+          "text": "Double (basketball) From the 2011–12 to the 2016–17 season, the NBA saw a dramatic increase in the number of triple-doubles, with an average of 57.33 triple-doubles per season, roughly 1 in every 22 games.[20] Russell Westbrook was responsi"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc152364",
+          "score": 32.032295715462766,
+          "is_relevant": false,
+          "title": "Rajon Rondo",
+          "text": "Rajon Rondo Rondo played two years of college basketball for the Kentucky Wildcats before he was drafted 21st overall by the Phoenix Suns in the 2006 NBA draft. He was subsequently traded to the Celtics where he played a supporting role dur"
+        }
+      ],
+      "renamed_top_docs": [
+        {
+          "rank": 1,
+          "doc_id": "doc3273",
+          "score": 39.656337398072736,
+          "is_relevant": false,
+          "title": "Double (basketball)",
+          "text": "Double (basketball) A triple-double is the accumulation of a double-digit number total in three of the five categories in a game. The most common way to achieve a triple-double is through points, rebounds, and assists. Entity_U81330 Roberts"
+        },
+        {
+          "rank": 2,
+          "doc_id": "doc3277",
+          "score": 34.973197680618064,
+          "is_relevant": false,
+          "title": "Double (basketball)",
+          "text": "Double (basketball) Special double-doubles are rare. One such double-double is called double double-double (also referred to as 20–20 or Double-20). It occurs when a player accumulates 20 or more in two different statistical categories in a"
+        },
+        {
+          "rank": 3,
+          "doc_id": "doc3276",
+          "score": 34.81059753141625,
+          "is_relevant": false,
+          "title": "Double (basketball)",
+          "text": "Double (basketball) A double-double is defined as a performance in which a player accumulates a double-digit number total in two of five statistical categories—points, rebounds, assists, steals, and blocked shots—in a game. The most common "
+        },
+        {
+          "rank": 4,
+          "doc_id": "doc3282",
+          "score": 32.31985701395649,
+          "is_relevant": false,
+          "title": "Double (basketball)",
+          "text": "Double (basketball) From the Number_LG0170–12 to the Number_RK0175–17 season, the Entity_LG1738 saw a dramatic increase in the number of triple-doubles, with an average of 57.33 triple-doubles per season, roughly 1 in every 22 games.[20] En"
+        },
+        {
+          "rank": 5,
+          "doc_id": "doc152364",
+          "score": 32.03234970816637,
+          "is_relevant": false,
+          "title": "Rajon Rondo",
+          "text": "Rajon Rondo Rondo played two years of college basketball for the Entity_XV0341 Wildcats before he was drafted 21st overall by the Entity_P50653 Suns in the Number_FD0165 Entity_LG1738 draft. He was subsequently traded to the Celtics where h"
+        }
+      ],
+      "qrel_docs": [
+        {
+          "doc_id": "doc3272",
+          "score": 1,
+          "source_title": "Double (basketball)",
+          "renamed_title": "Double (basketball)",
+          "source_text": "Double (basketball) A double-double is the accumulation of a double-digit number total in two of the statistical five categories in a game. The most common double-double combination is points-rebounds, followed by points-assists. Since the 1983–84 season, Tim Duncan leads the National Basketball Ass",
+          "renamed_text": "Double (basketball) A double-double is the accumulation of a double-digit number total in two of the statistical five categories in a game. The most common double-double combination is points-rebounds, followed by points-assists. Since the Number_RK0143–84 season, Entity_Y41782 Entity_J20840 leads t"
+        }
+      ]
+    }
+  ]
+}

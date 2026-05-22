@@ -1,0 +1,79 @@
+{
+  "source_dataset": "nq_subset",
+  "renamed_dataset": "local:D:\\Desktop\\expected_answer_rag\\outputs\\renamed_nq_stage2_token_v5_full\\opaque",
+  "num_queries": 500,
+  "source_metrics": {
+    "recall@5": 0.438,
+    "recall@10": 0.57,
+    "recall@20": 0.6943333333333334,
+    "mrr@10": 0.33844682539682536,
+    "ndcg@10": 0.38178642931512197
+  },
+  "renamed_metrics": {
+    "recall@5": 0.438,
+    "recall@10": 0.57,
+    "recall@20": 0.6943333333333334,
+    "mrr@10": 0.33844682539682536,
+    "ndcg@10": 0.38178642931512197
+  },
+  "delta": {
+    "mrr@10": 0.0,
+    "ndcg@10": 0.0,
+    "recall@10": 0.0,
+    "recall@20": 0.0,
+    "recall@5": 0.0
+  },
+  "rank_change_counts": {
+    "same": 498,
+    "worse": 2
+  },
+  "replacement_stats": {
+    "num_mapping_rows": 2042,
+    "kind_counts": {
+      "ENTITY": 1794,
+      "NUMBER": 248
+    },
+    "replacement_minus_source_token_count": {
+      "0": 2042
+    },
+    "single_token_source_count": 2042,
+    "long_source_count": 0,
+    "common_source_count": 0,
+    "single_token_source_examples": [
+      "Habsburgermonarchie",
+      "Splodgenessabounds",
+      "Uniformitarianism",
+      "Dendrochronology",
+      "Parliamentarians",
+      "Buckinghamshire",
+      "Parliamentarian",
+      "Phosphocreatine",
+      "Representatives",
+      "Communications",
+      "Cnemidophorus",
+      "Massachusetts",
+      "Mediterranean",
+      "Protectionism",
+      "Revolutionary",
+      "Staffordshire",
+      "Vindhyavasini",
+      "Appalachians",
+      "Buddhiballav",
+      "Chainsmokers",
+      "Championship",
+      "Chandragupta",
+      "Constructors",
+      "Greensleeves",
+      "Jacksonville",
+      "Luftschlacht",
+      "Newfoundland",
+      "Pennsylvania",
+      "Philadelphia",
+      "WrestleMania"
+    ],
+    "long_source_examples": [],
+    "common_source_examples": []
+  },
+  "worst_regressions": [],
+  "largest_improvements": []
+}

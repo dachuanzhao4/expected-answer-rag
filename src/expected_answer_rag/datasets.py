@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional
 
 
@@ -34,6 +36,14 @@ def load_dataset(
 ) -> RetrievalDataset:
     if name == "toy":
         return load_toy_dataset(max_queries=max_queries)
+    if name.startswith("local:"):
+        return load_local_dataset(
+            path=name.removeprefix("local:"),
+            max_corpus=max_corpus,
+            max_queries=max_queries,
+        )
+    if Path(name).exists():
+        return load_local_dataset(path=name, max_corpus=max_corpus, max_queries=max_queries)
     return load_beir_dataset(
         name=name,
         max_corpus=max_corpus,
@@ -63,6 +73,42 @@ def load_toy_dataset(max_queries: Optional[int] = None) -> RetrievalDataset:
         "q3": {"d3": 1},
     }
     return RetrievalDataset("toy", corpus, queries, qrels)
+
+
+def load_local_dataset(
+    path: str,
+    max_corpus: Optional[int] = None,
+    max_queries: Optional[int] = None,
+) -> RetrievalDataset:
+    root = Path(path)
+    if not root.is_absolute():
+        root = Path.cwd() / root
+    corpus_path = root / "corpus.jsonl"
+    queries_path = root / "queries.jsonl"
+    qrels_path = root / "qrels.jsonl"
+    if not corpus_path.exists() or not queries_path.exists() or not qrels_path.exists():
+        raise RuntimeError(f"Local dataset must contain corpus.jsonl, queries.jsonl, and qrels.jsonl: {root}")
+
+    corpus = [
+        Document(
+            doc_id=str(row.get("_id") or row.get("id") or row.get("doc_id")),
+            title=str(row.get("title") or ""),
+            text=_join_title_text(row.get("title"), row.get("text")),
+        )
+        for row in _take(_read_jsonl(corpus_path), max_corpus)
+    ]
+    queries = [
+        Query(
+            query_id=str(row.get("_id") or row.get("id") or row.get("query_id")),
+            text=str(row.get("text") or row.get("query") or ""),
+            answers=tuple(str(answer) for answer in row.get("answers", []) if answer),
+        )
+        for row in _take(_read_jsonl(queries_path), max_queries)
+    ]
+    query_ids = {query.query_id for query in queries}
+    corpus_ids = {doc.doc_id for doc in corpus}
+    qrels = _parse_qrels(_read_jsonl(qrels_path), query_ids=query_ids, corpus_ids=corpus_ids)
+    return RetrievalDataset(name=f"local:{root}", corpus=corpus, queries=queries, qrels=qrels)
 
 
 def load_beir_dataset(
@@ -178,3 +224,11 @@ def _parse_qrels(
             continue
         qrels.setdefault(qid, {})[did] = score
     return qrels
+
+
+def _read_jsonl(path: Path) -> Iterable[Mapping]:
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                yield json.loads(line)

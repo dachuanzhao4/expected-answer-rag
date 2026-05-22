@@ -1,21 +1,14 @@
 __pycache__/
-*.py[cod]
+*.pyc
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
 
-.venv/
-venv/
-env/
-
-.env
-.env.*
-!.env.example
-
+# Rebuilt experiment artifacts. Curated artifacts live under results/.
 outputs/
-data/
-cache/
-.cache/
 
-*.log
-*.tmp
+# Large local caches should stay outside git.
+embeddings/
+hf_cache/
+*.faiss
+
+# Full renamed corpora are rebuildable and exceed normal GitHub file limits.
+**/corpus.jsonl

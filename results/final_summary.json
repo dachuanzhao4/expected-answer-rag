@@ -1,0 +1,479 @@
+{
+  "notes": {
+    "primary_metric": "ndcg@10",
+    "private_effective_subset": "queries whose text contains at least one corpus-aligned replacement token",
+    "final_method": "llm_reformat_v2"
+  },
+  "runs": {
+    "public_nq_bm25": {
+      "dataset": "nq",
+      "retriever": "bm25",
+      "num_queries": 500,
+      "metrics": {
+        "query_only": {
+          "recall@10": 0.57,
+          "mrr@10": 0.338447,
+          "ndcg@10": 0.381786
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.8,
+          "mrr@10": 0.562184,
+          "ndcg@10": 0.604944
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.744,
+          "mrr@10": 0.498729,
+          "ndcg@10": 0.542358
+        }
+      }
+    },
+    "public_nq_dense": {
+      "dataset": "nq",
+      "retriever": "dense",
+      "num_queries": 500,
+      "metrics": {
+        "query_only": {
+          "recall@10": 0.899667,
+          "mrr@10": 0.63879,
+          "ndcg@10": 0.686843
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.928667,
+          "mrr@10": 0.701791,
+          "ndcg@10": 0.745093
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.914333,
+          "mrr@10": 0.672258,
+          "ndcg@10": 0.717834
+        }
+      }
+    },
+    "opaque_bm25": {
+      "dataset": "local:D:\\Desktop\\expected_answer_rag\\outputs\\renamed_nq_stage2_token_v5_full\\opaque",
+      "retriever": "bm25",
+      "num_queries": 500,
+      "metrics": {
+        "query_only": {
+          "recall@10": 0.57,
+          "mrr@10": 0.338447,
+          "ndcg@10": 0.381786
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.696667,
+          "mrr@10": 0.448473,
+          "ndcg@10": 0.491049
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.660667,
+          "mrr@10": 0.414705,
+          "ndcg@10": 0.458256
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.572,
+          "mrr@10": 0.337848,
+          "ndcg@10": 0.382425
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.563,
+          "mrr@10": 0.341633,
+          "ndcg@10": 0.383314
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.577,
+          "mrr@10": 0.337369,
+          "ndcg@10": 0.382194
+        }
+      }
+    },
+    "opaque_dense": {
+      "dataset": "local:D:\\Desktop\\expected_answer_rag\\outputs\\renamed_nq_stage2_token_v5_full\\opaque",
+      "retriever": "dense",
+      "num_queries": 500,
+      "metrics": {
+        "query_only": {
+          "recall@10": 0.731,
+          "mrr@10": 0.47282,
+          "ndcg@10": 0.523883
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.729333,
+          "mrr@10": 0.495828,
+          "ndcg@10": 0.540308
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.724333,
+          "mrr@10": 0.495177,
+          "ndcg@10": 0.535566
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.734,
+          "mrr@10": 0.473522,
+          "ndcg@10": 0.525213
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.724667,
+          "mrr@10": 0.471537,
+          "ndcg@10": 0.520998
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.725667,
+          "mrr@10": 0.465135,
+          "ndcg@10": 0.516411
+        }
+      }
+    },
+    "plausible_bm25": {
+      "dataset": "local:D:\\Desktop\\expected_answer_rag\\outputs\\renamed_nq_stage2_token_v5_full\\plausible",
+      "retriever": "bm25",
+      "num_queries": 500,
+      "metrics": {
+        "query_only": {
+          "recall@10": 0.57,
+          "mrr@10": 0.338447,
+          "ndcg@10": 0.381786
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.712,
+          "mrr@10": 0.444062,
+          "ndcg@10": 0.494362
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.675,
+          "mrr@10": 0.411784,
+          "ndcg@10": 0.459274
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.567333,
+          "mrr@10": 0.337607,
+          "ndcg@10": 0.380801
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.563,
+          "mrr@10": 0.335936,
+          "ndcg@10": 0.379147
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.57,
+          "mrr@10": 0.337283,
+          "ndcg@10": 0.380243
+        }
+      }
+    },
+    "plausible_dense": {
+      "dataset": "local:D:\\Desktop\\expected_answer_rag\\outputs\\renamed_nq_stage2_token_v5_full\\plausible",
+      "retriever": "dense",
+      "num_queries": 500,
+      "metrics": {
+        "query_only": {
+          "recall@10": 0.728667,
+          "mrr@10": 0.47826,
+          "ndcg@10": 0.527316
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.740333,
+          "mrr@10": 0.49971,
+          "ndcg@10": 0.543627
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.734333,
+          "mrr@10": 0.494667,
+          "ndcg@10": 0.53683
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.739667,
+          "mrr@10": 0.475875,
+          "ndcg@10": 0.527641
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.718,
+          "mrr@10": 0.463321,
+          "ndcg@10": 0.513178
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.724,
+          "mrr@10": 0.467163,
+          "ndcg@10": 0.51703
+        }
+      }
+    }
+  },
+  "private_subsets": {
+    "opaque_bm25": {
+      "num_records": 500,
+      "num_changed": 284,
+      "num_unchanged": 216,
+      "changed": {
+        "query_only": {
+          "recall@10": 0.603286,
+          "mrr@10": 0.357738,
+          "ndcg@10": 0.403128
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.676643,
+          "mrr@10": 0.42213,
+          "ndcg@10": 0.465365
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.654343,
+          "mrr@10": 0.402245,
+          "ndcg@10": 0.447077
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.61561,
+          "mrr@10": 0.358276,
+          "ndcg@10": 0.407394
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.603286,
+          "mrr@10": 0.359514,
+          "ndcg@10": 0.405004
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.619131,
+          "mrr@10": 0.358368,
+          "ndcg@10": 0.406841
+        }
+      },
+      "unchanged": {
+        "query_only": {
+          "recall@10": 0.526235,
+          "mrr@10": 0.313082,
+          "ndcg@10": 0.353726
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.722994,
+          "mrr@10": 0.483109,
+          "ndcg@10": 0.524818
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.668981,
+          "mrr@10": 0.431086,
+          "ndcg@10": 0.472954
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.51466,
+          "mrr@10": 0.310988,
+          "ndcg@10": 0.349594
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.510031,
+          "mrr@10": 0.318122,
+          "ndcg@10": 0.354797
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.521605,
+          "mrr@10": 0.309759,
+          "ndcg@10": 0.349787
+        }
+      }
+    },
+    "opaque_dense": {
+      "num_records": 500,
+      "num_changed": 284,
+      "num_unchanged": 216,
+      "changed": {
+        "query_only": {
+          "recall@10": 0.650822,
+          "mrr@10": 0.405486,
+          "ndcg@10": 0.451935
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.6027,
+          "mrr@10": 0.397087,
+          "ndcg@10": 0.434616
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.612089,
+          "mrr@10": 0.391594,
+          "ndcg@10": 0.431579
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.668427,
+          "mrr@10": 0.409795,
+          "ndcg@10": 0.458496
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.657864,
+          "mrr@10": 0.416936,
+          "ndcg@10": 0.46176
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.651995,
+          "mrr@10": 0.396454,
+          "ndcg@10": 0.445792
+        }
+      },
+      "unchanged": {
+        "query_only": {
+          "recall@10": 0.83642,
+          "mrr@10": 0.561352,
+          "ndcg@10": 0.618481
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.895833,
+          "mrr@10": 0.625654,
+          "ndcg@10": 0.679273
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.871914,
+          "mrr@10": 0.631369,
+          "ndcg@10": 0.67229
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.820216,
+          "mrr@10": 0.557312,
+          "ndcg@10": 0.612932
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.8125,
+          "mrr@10": 0.543327,
+          "ndcg@10": 0.598885
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.822531,
+          "mrr@10": 0.555438,
+          "ndcg@10": 0.609261
+        }
+      }
+    },
+    "plausible_bm25": {
+      "num_records": 500,
+      "num_changed": 284,
+      "num_unchanged": 216,
+      "changed": {
+        "query_only": {
+          "recall@10": 0.603286,
+          "mrr@10": 0.357738,
+          "ndcg@10": 0.403128
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.694249,
+          "mrr@10": 0.413932,
+          "ndcg@10": 0.466085
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.673122,
+          "mrr@10": 0.403457,
+          "ndcg@10": 0.451478
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.606808,
+          "mrr@10": 0.356742,
+          "ndcg@10": 0.403764
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.598005,
+          "mrr@10": 0.358013,
+          "ndcg@10": 0.40239
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.61385,
+          "mrr@10": 0.356872,
+          "ndcg@10": 0.404641
+        }
+      },
+      "unchanged": {
+        "query_only": {
+          "recall@10": 0.526235,
+          "mrr@10": 0.313082,
+          "ndcg@10": 0.353726
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.73534,
+          "mrr@10": 0.483677,
+          "ndcg@10": 0.531542
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.677469,
+          "mrr@10": 0.422733,
+          "ndcg@10": 0.469523
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.515432,
+          "mrr@10": 0.312449,
+          "ndcg@10": 0.350608
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.516975,
+          "mrr@10": 0.306908,
+          "ndcg@10": 0.348586
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.512346,
+          "mrr@10": 0.311526,
+          "ndcg@10": 0.348164
+        }
+      }
+    },
+    "plausible_dense": {
+      "num_records": 500,
+      "num_changed": 284,
+      "num_unchanged": 216,
+      "changed": {
+        "query_only": {
+          "recall@10": 0.642606,
+          "mrr@10": 0.415025,
+          "ndcg@10": 0.456671
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.621479,
+          "mrr@10": 0.398315,
+          "ndcg@10": 0.439414
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.626761,
+          "mrr@10": 0.3979,
+          "ndcg@10": 0.439664
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.667254,
+          "mrr@10": 0.416579,
+          "ndcg@10": 0.463236
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.65669,
+          "mrr@10": 0.405512,
+          "ndcg@10": 0.452211
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.634977,
+          "mrr@10": 0.398614,
+          "ndcg@10": 0.442549
+        }
+      },
+      "unchanged": {
+        "query_only": {
+          "recall@10": 0.841821,
+          "mrr@10": 0.561401,
+          "ndcg@10": 0.620201
+        },
+        "query2doc_expanded_query": {
+          "recall@10": 0.896605,
+          "mrr@10": 0.633027,
+          "ndcg@10": 0.680648
+        },
+        "masked_query2doc_expanded_query": {
+          "recall@10": 0.875772,
+          "mrr@10": 0.621897,
+          "ndcg@10": 0.664585
+        },
+        "llm_reformat_fusion": {
+          "recall@10": 0.834877,
+          "mrr@10": 0.553838,
+          "ndcg@10": 0.612323
+        },
+        "llm_reformat_anchor_view": {
+          "recall@10": 0.798611,
+          "mrr@10": 0.539328,
+          "ndcg@10": 0.593337
+        },
+        "llm_reformat_dense_view": {
+          "recall@10": 0.841049,
+          "mrr@10": 0.557292,
+          "ndcg@10": 0.614959
+        }
+      }
+    }
+  }
+}

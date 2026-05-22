@@ -1,0 +1,685 @@
+{
+  "dataset": "local:D:\\Desktop\\expected_answer_rag\\outputs\\renamed_nq_stage2_token_v5_full\\plausible",
+  "num_corpus": 200000,
+  "num_queries": 500,
+  "completed_queries": 500,
+  "num_qrels_queries": 500,
+  "retriever": "bm25",
+  "embedding_model": null,
+  "query_prefix": null,
+  "embedding_cache": null,
+  "embedding_device": null,
+  "generator": "openrouter",
+  "model": "openai/gpt-5-mini",
+  "prompt_style": "query2doc_fewshot",
+  "query_repeat": 5,
+  "dense_separator": null,
+  "include_answer_blanked": false,
+  "answer_blanked_fusion_weights": null,
+  "include_lf_er": false,
+  "lf_er_fusion_weights": null,
+  "lf_er_bm25_agreement_weights": null,
+  "lf_er_dense_agreement_weights": null,
+  "lf_er_inverse_query_weights": null,
+  "lf_er_anchor_gated_fusion_weights": null,
+  "lf_er_short_fusion_weights": null,
+  "lf_er_dense_safe_fusion_weights": null,
+  "include_llm_reformat": true,
+  "llm_reformat_version": "v2",
+  "llm_reformat_fusion_weights": [
+    6.0,
+    1.0,
+    1.0,
+    0.6,
+    0.6
+  ],
+  "api_workers": 16,
+  "top_k": 20,
+  "metrics": {
+    "query_only": {
+      "recall@5": 0.438,
+      "recall@10": 0.57,
+      "recall@20": 0.6943333333333334,
+      "mrr@10": 0.33844682539682536,
+      "ndcg@10": 0.38178642931512197
+    },
+    "query2doc_pseudo_doc_only": {
+      "recall@5": 0.41083333333333333,
+      "recall@10": 0.47733333333333333,
+      "recall@20": 0.5523333333333333,
+      "mrr@10": 0.3250515873015873,
+      "ndcg@10": 0.349332296265456
+    },
+    "masked_query2doc_pseudo_doc_only": {
+      "recall@5": 0.3651666666666667,
+      "recall@10": 0.4341666666666667,
+      "recall@20": 0.5085,
+      "mrr@10": 0.2859357142857143,
+      "ndcg@10": 0.3091896405735924
+    },
+    "query2doc_expanded_query": {
+      "recall@5": 0.5486666666666666,
+      "recall@10": 0.712,
+      "recall@20": 0.7796666666666666,
+      "mrr@10": 0.44406190476190477,
+      "ndcg@10": 0.49436211916458633
+    },
+    "masked_query2doc_expanded_query": {
+      "recall@5": 0.5106666666666667,
+      "recall@10": 0.675,
+      "recall@20": 0.7656666666666666,
+      "mrr@10": 0.411784126984127,
+      "ndcg@10": 0.4592736377271765
+    },
+    "llm_reformat_anchor_view": {
+      "recall@5": 0.442,
+      "recall@10": 0.563,
+      "recall@20": 0.702,
+      "mrr@10": 0.33593571428571434,
+      "ndcg@10": 0.37914655857132895
+    },
+    "llm_reformat_intent_terms_view": {
+      "recall@5": 0.428,
+      "recall@10": 0.5696666666666667,
+      "recall@20": 0.693,
+      "mrr@10": 0.34393730158730157,
+      "ndcg@10": 0.3848853588153514
+    },
+    "llm_reformat_dense_view": {
+      "recall@5": 0.439,
+      "recall@10": 0.57,
+      "recall@20": 0.6956666666666667,
+      "mrr@10": 0.3372825396825397,
+      "ndcg@10": 0.3802427645031133
+    },
+    "llm_reformat_bm25_view": {
+      "recall@5": 0.43,
+      "recall@10": 0.5716666666666667,
+      "recall@20": 0.694,
+      "mrr@10": 0.3444730158730159,
+      "ndcg@10": 0.3857485421625223
+    },
+    "llm_reformat_corpus_style_view": {
+      "recall@5": 0.43,
+      "recall@10": 0.5726666666666667,
+      "recall@20": 0.693,
+      "mrr@10": 0.34438968253968255,
+      "ndcg@10": 0.38607582233705473
+    },
+    "llm_reformat_expanded_query": {
+      "recall@5": 0.436,
+      "recall@10": 0.568,
+      "recall@20": 0.6976666666666667,
+      "mrr@10": 0.3378952380952381,
+      "ndcg@10": 0.38081661764418306
+    },
+    "llm_reformat_dense_expanded_query": {
+      "recall@5": 0.447,
+      "recall@10": 0.577,
+      "recall@20": 0.6946666666666667,
+      "mrr@10": 0.3413,
+      "ndcg@10": 0.38500595717450536
+    },
+    "llm_reformat_fusion": {
+      "recall@5": 0.434,
+      "recall@10": 0.5673333333333334,
+      "recall@20": 0.6943333333333334,
+      "mrr@10": 0.33760714285714283,
+      "ndcg@10": 0.380800760548685
+    }
+  },
+  "method_ranking": [
+    {
+      "method": "query2doc_expanded_query",
+      "ndcg@10": 0.49436211916458633,
+      "delta_vs_query_only": 0.11257568984946437
+    },
+    {
+      "method": "masked_query2doc_expanded_query",
+      "ndcg@10": 0.4592736377271765,
+      "delta_vs_query_only": 0.07748720841205453
+    },
+    {
+      "method": "llm_reformat_corpus_style_view",
+      "ndcg@10": 0.38607582233705473,
+      "delta_vs_query_only": 0.004289393021932764
+    },
+    {
+      "method": "llm_reformat_bm25_view",
+      "ndcg@10": 0.3857485421625223,
+      "delta_vs_query_only": 0.003962112847400334
+    },
+    {
+      "method": "llm_reformat_dense_expanded_query",
+      "ndcg@10": 0.38500595717450536,
+      "delta_vs_query_only": 0.0032195278593833976
+    },
+    {
+      "method": "llm_reformat_intent_terms_view",
+      "ndcg@10": 0.3848853588153514,
+      "delta_vs_query_only": 0.0030989295002294415
+    },
+    {
+      "method": "query_only",
+      "ndcg@10": 0.38178642931512197,
+      "delta_vs_query_only": 0.0
+    },
+    {
+      "method": "llm_reformat_expanded_query",
+      "ndcg@10": 0.38081661764418306,
+      "delta_vs_query_only": -0.0009698116709389026
+    },
+    {
+      "method": "llm_reformat_fusion",
+      "ndcg@10": 0.380800760548685,
+      "delta_vs_query_only": -0.0009856687664369645
+    },
+    {
+      "method": "llm_reformat_dense_view",
+      "ndcg@10": 0.3802427645031133,
+      "delta_vs_query_only": -0.0015436648120086827
+    },
+    {
+      "method": "llm_reformat_anchor_view",
+      "ndcg@10": 0.37914655857132895,
+      "delta_vs_query_only": -0.002639870743793016
+    },
+    {
+      "method": "query2doc_pseudo_doc_only",
+      "ndcg@10": 0.349332296265456,
+      "delta_vs_query_only": -0.03245413304966599
+    },
+    {
+      "method": "masked_query2doc_pseudo_doc_only",
+      "ndcg@10": 0.3091896405735924,
+      "delta_vs_query_only": -0.07259678874152958
+    }
+  ],
+  "generation_summary": {
+    "avg_query2doc_token_count": 80.252,
+    "avg_masked_query2doc_token_count": 72.6,
+    "avg_query2doc_capitalized_span_count": 6.294,
+    "avg_masked_query2doc_capitalized_span_count": 5.558,
+    "avg_mask_slot_count": 1.556
+  },
+  "leakage_bucket_metrics": {
+    "query_only": {
+      "unknown_gold_answer": {
+        "recall@5": 0.438,
+        "recall@10": 0.57,
+        "recall@20": 0.6943333333333334,
+        "mrr@10": 0.33844682539682536,
+        "ndcg@10": 0.38178642931512197
+      }
+    },
+    "query2doc_pseudo_doc_only": {
+      "unknown_gold_answer": {
+        "recall@5": 0.41083333333333333,
+        "recall@10": 0.47733333333333333,
+        "recall@20": 0.5523333333333333,
+        "mrr@10": 0.3250515873015873,
+        "ndcg@10": 0.349332296265456
+      }
+    },
+    "masked_query2doc_pseudo_doc_only": {
+      "unknown_gold_answer": {
+        "recall@5": 0.3651666666666667,
+        "recall@10": 0.4341666666666667,
+        "recall@20": 0.5085,
+        "mrr@10": 0.2859357142857143,
+        "ndcg@10": 0.3091896405735924
+      }
+    },
+    "query2doc_expanded_query": {
+      "unknown_gold_answer": {
+        "recall@5": 0.5486666666666666,
+        "recall@10": 0.712,
+        "recall@20": 0.7796666666666666,
+        "mrr@10": 0.44406190476190477,
+        "ndcg@10": 0.49436211916458633
+      }
+    },
+    "masked_query2doc_expanded_query": {
+      "unknown_gold_answer": {
+        "recall@5": 0.5106666666666667,
+        "recall@10": 0.675,
+        "recall@20": 0.7656666666666666,
+        "mrr@10": 0.411784126984127,
+        "ndcg@10": 0.4592736377271765
+      }
+    },
+    "llm_reformat_anchor_view": {
+      "unknown_gold_answer": {
+        "recall@5": 0.442,
+        "recall@10": 0.563,
+        "recall@20": 0.702,
+        "mrr@10": 0.33593571428571434,
+        "ndcg@10": 0.37914655857132895
+      }
+    },
+    "llm_reformat_intent_terms_view": {
+      "unknown_gold_answer": {
+        "recall@5": 0.428,
+        "recall@10": 0.5696666666666667,
+        "recall@20": 0.693,
+        "mrr@10": 0.34393730158730157,
+        "ndcg@10": 0.3848853588153514
+      }
+    },
+    "llm_reformat_dense_view": {
+      "unknown_gold_answer": {
+        "recall@5": 0.439,
+        "recall@10": 0.57,
+        "recall@20": 0.6956666666666667,
+        "mrr@10": 0.3372825396825397,
+        "ndcg@10": 0.3802427645031133
+      }
+    },
+    "llm_reformat_bm25_view": {
+      "unknown_gold_answer": {
+        "recall@5": 0.43,
+        "recall@10": 0.5716666666666667,
+        "recall@20": 0.694,
+        "mrr@10": 0.3444730158730159,
+        "ndcg@10": 0.3857485421625223
+      }
+    },
+    "llm_reformat_corpus_style_view": {
+      "unknown_gold_answer": {
+        "recall@5": 0.43,
+        "recall@10": 0.5726666666666667,
+        "recall@20": 0.693,
+        "mrr@10": 0.34438968253968255,
+        "ndcg@10": 0.38607582233705473
+      }
+    },
+    "llm_reformat_expanded_query": {
+      "unknown_gold_answer": {
+        "recall@5": 0.436,
+        "recall@10": 0.568,
+        "recall@20": 0.6976666666666667,
+        "mrr@10": 0.3378952380952381,
+        "ndcg@10": 0.38081661764418306
+      }
+    },
+    "llm_reformat_dense_expanded_query": {
+      "unknown_gold_answer": {
+        "recall@5": 0.447,
+        "recall@10": 0.577,
+        "recall@20": 0.6946666666666667,
+        "mrr@10": 0.3413,
+        "ndcg@10": 0.38500595717450536
+      }
+    },
+    "llm_reformat_fusion": {
+      "unknown_gold_answer": {
+        "recall@5": 0.434,
+        "recall@10": 0.5673333333333334,
+        "recall@20": 0.6943333333333334,
+        "mrr@10": 0.33760714285714283,
+        "ndcg@10": 0.380800760548685
+      }
+    }
+  },
+  "lf_er_diagnostics_summary": null,
+  "sample_generations": {
+    "test0": {
+      "query": "what is non controlling interest on balance sheet",
+      "answers": [],
+      "query2doc": "Non-controlling interest (also called minority interest) is the portion of a subsidiary’s equity that is not owned by the parent company but is included in consolidated financial statements. It arises when a parent owns more than 50% (so it controls the subsidiary) but less than 100% of the subsidiary’s shares.\n\nKey points:\n- Presentation: On the consolidated balance sheet, non-controlling interest is reported within the equity section as a separate line item, not as a liability.\n- What it represents: The NCI equals the non‑owner shareholders’ share of the subsidiary’s net assets (and accumulated earnings) at the reporting date.\n- Measurement: At acquisition, NCI is measured either at fair value or at the NCI’s proportionate share of identifiable net assets (IFRS allows a choice; US GAAP generally measures at fair value). After acquisition, NCI is increased by its share of subsidiary profit and decreased by its share of subsidiary losses and dividends paid.\n- Income statement impact: A consolidated net income is allocated between the parent’s shareholders and the non‑controlling interest; the NCI’s share appears as “net income attributable to non‑controlling interest.”\n\nSimple example: A parent owns 80% of a subsidiary whose net assets are $1,000. The NCI on the consolidated balance sheet would be $200 (20% × $1,000), and future profits or dividends of the subsidiary would be split 80/20 between the parent and the non‑controlling shareholders.",
+      "masked_query2doc": "Non-controlling interest (also called minority interest) is the portion of a subsidiary’s equity that is not owned by the parent company but is included in consolidated financial statements. It arises when a parent owns more than 50% (so it controls the subsidiary) but less than 100% of the subsidiary’s shares.\n\nKey points:\n- Presentation: On the consolidated balance sheet, non-controlling interest is [ENTITY].\n- What it represents: The NCI equals the non‑owner shareholders’ share of the subsidiary’s net assets (and accumulated earnings) at the reporting date.\n- Measurement: At acquisition, NCI is measured either at fair value or at the NCI’s proportionate share of identifiable net assets (IFRS allows a choice; US GAAP generally measures at fair value). After acquisition, NCI is increased by its share of subsidiary profit and decreased by its share of subsidiary losses and dividends paid.\n- Income statement impact: A consolidated net income is allocated between the parent’s shareholders and the non‑controlling interest; the NCI’s share appears as “net income attributable to non‑controlling interest.”\n\nSimple example: A parent owns 80% of a subsidiary whose net assets are $1,000. The NCI on the consolidated balance sheet would be $200 (20% × $1,000), and future profits or dividends of the subsidiary would be split 80/20 between the parent and the non‑controlling shareholders.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 228,
+        "masked_query2doc_token_count": 215,
+        "query2doc_capitalized_span_count": 11,
+        "masked_query2doc_capitalized_span_count": 11,
+        "mask_slot_count": 1
+      },
+      "llm_reformat_raw": "{\"answer_type\":\"ENTITY\",\"anchors\":[{\"text\":\"non controlling interest\",\"role\":\"subject\",\"importance\":\"primary\"},{\"text\":\"balance sheet\",\"role\":\"context\",\"importance\":\"support\"}],\"query_focus_terms\":[\"what is\",\"non controlling interest\",\"balance sheet\"],\"relation_class\":\"definition\",\"relation_confidence\":\"high\",\"retrieval_policy\":\"anchor_plus_one_cue\"}",
+      "llm_reformat_package": {
+        "query": "what is non controlling interest on balance sheet",
+        "answer_type": "ENTITY",
+        "answer_slot": "[ENTITY]",
+        "known_anchors": [
+          {
+            "text": "non controlling interest",
+            "role": "primary_subject",
+            "required": true
+          },
+          {
+            "text": "balance sheet",
+            "role": "support_context",
+            "required": true
+          }
+        ],
+        "relation_frame": {
+          "name": "query_relation",
+          "confidence": "high",
+          "core_relation_terms": [
+            "meaning"
+          ],
+          "forbidden_answer_generation": true
+        },
+        "retrieval_views": {
+          "llm_anchor_view": "what is non controlling interest on balance sheet non controlling interest balance sheet",
+          "llm_intent_terms_view": "what is non controlling interest on balance sheet non controlling interest balance sheet what is meaning",
+          "llm_dense_view": "what is non controlling interest on balance sheet meaning",
+          "llm_dense_expansion_view": "meaning non controlling interest",
+          "llm_bm25_view": "what is non controlling interest on balance sheet non controlling interest balance sheet what is meaning",
+          "llm_corpus_style_view": "what is non controlling interest on balance sheet non controlling interest balance sheet what is meaning"
+        },
+        "constraints": {
+          "must_preserve_anchors": true,
+          "must_include_expected_slot": false,
+          "must_not_include_query_external_entities": true,
+          "must_not_include_refusal": true
+        },
+        "validation": {
+          "ok": true,
+          "issues": []
+        },
+        "metadata": {
+          "builder": "llm_structured_reformat_v2",
+          "fallback_used": false,
+          "relation_class": "definition",
+          "retrieval_policy": "anchor_plus_one_cue",
+          "sanitizer_issues": [],
+          "raw_payload": "{\"answer_type\":\"ENTITY\",\"anchors\":[{\"text\":\"non controlling interest\",\"role\":\"subject\",\"importance\":\"primary\"},{\"text\":\"balance sheet\",\"role\":\"context\",\"importance\":\"support\"}],\"query_focus_terms\":[\"what is\",\"non controlling interest\",\"balance sheet\"],\"relation_class\":\"definition\",\"relation_confidence\":\"high\",\"retrieval_policy\":\"anchor_plus_one_cue\"}"
+        }
+      }
+    },
+    "test1": {
+      "query": "how many episodes are in KeplerRow0504 fire season 4",
+      "answers": [],
+      "query2doc": "I can’t find any reliable information about a show titled \"KeplerRow0504 fire,\" so I’m unable to confirm how many episodes season 4 contains. It may be a typo, a fan or private project, or a title used on a specific platform. If you can share the correct or alternative title, the platform where it’s available, or a link, I can look it up. You can also check the show’s page on the streaming service, the official website, or episode guide sites like IMDb or TVDB for episode counts.",
+      "masked_query2doc": "I can’t find any reliable information about a show titled \"KeplerRow0504 fire,\" so I’m unable to confirm how many episodes season 4 contains. It may be a typo, a fan or private project, or a title used on a specific platform. If you can share the correct or alternative title, the platform where it’s available, or a link, I can look it up. You can also check the show’s page on the streaming service, the official website, or episode guide sites like IMDb or TVDB for episode counts.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 88,
+        "masked_query2doc_token_count": 88,
+        "query2doc_capitalized_span_count": 3,
+        "masked_query2doc_capitalized_span_count": 3,
+        "mask_slot_count": 0
+      },
+      "llm_reformat_raw": "{\n  \"answer_type\": \"ENTITY\",\n  \"anchors\": [\n    {\"text\": \"Entity_123\", \"role\": \"subject\", \"importance\": \"primary\"},\n    {\"text\": \"Work_AB0001\", \"role\": \"work\", \"importance\": \"primary\"},\n    {\"text\": \"Person_X9\", \"role\": \"person\", \"importance\": \"primary\"},\n    {\"text\": \"Location_Z7\", \"role\": \"location\", \"importance\": \"primary\"},\n    {\"text\": \"private RAG corpus\", \"role\": \"context\", \"importance\": \"support\"},\n    {\"text\": \"leakage-free retrieval intent\", \"role\": \"context\", \"importance\": \"support\"},\n    {\"text\": \"real anchors\", \"role\": \"modifier\", \"importance\": \"support\"}\n  ],\n  \"query_focus_terms\": [\n    \"leakage-free retrieval intent\",\n    \"private RAG corpus\",\n    \"Entity_123\",\n    \"Work_AB0001\",\n    \"Person_X9\",\n    \"Location_Z7\",\n    \"real anchors\"\n  ],\n  \"relation_class\": \"other\",\n  \"relation_confidence\": \"high\",\n  \"retrieval_policy\": \"anchor_only\"\n}",
+      "llm_reformat_package": {
+        "query": "how many episodes are in KeplerRow0504 fire season 4",
+        "answer_type": "ENTITY",
+        "answer_slot": "[ENTITY]",
+        "known_anchors": [
+          {
+            "text": "KeplerRow0504",
+            "role": "query_anchor",
+            "required": true
+          },
+          {
+            "text": "4",
+            "role": "query_anchor",
+            "required": true
+          }
+        ],
+        "relation_frame": {
+          "name": "query_relation",
+          "confidence": "medium",
+          "core_relation_terms": [],
+          "forbidden_answer_generation": true
+        },
+        "retrieval_views": {
+          "llm_anchor_view": "how many episodes are in KeplerRow0504 fire season 4 KeplerRow0504 4",
+          "llm_intent_terms_view": "how many episodes are in KeplerRow0504 fire season 4 KeplerRow0504 4 many episodes fire season",
+          "llm_dense_view": "how many episodes are in KeplerRow0504 fire season 4",
+          "llm_dense_expansion_view": "KeplerRow0504",
+          "llm_bm25_view": "how many episodes are in KeplerRow0504 fire season 4 KeplerRow0504 4 many episodes fire season",
+          "llm_corpus_style_view": "how many episodes are in KeplerRow0504 fire season 4 KeplerRow0504 4 many episodes fire season"
+        },
+        "constraints": {
+          "must_preserve_anchors": true,
+          "must_include_expected_slot": false,
+          "must_not_include_query_external_entities": true,
+          "must_not_include_refusal": true
+        },
+        "validation": {
+          "ok": true,
+          "issues": []
+        },
+        "metadata": {
+          "builder": "llm_structured_reformat_v2",
+          "fallback_used": false,
+          "relation_class": "other",
+          "retrieval_policy": "anchor_only",
+          "sanitizer_issues": [
+            "dropped_query_external_anchor:Entity_123",
+            "dropped_query_external_anchor:Work_AB0001",
+            "dropped_query_external_anchor:Person_X9",
+            "dropped_query_external_anchor:Location_Z7",
+            "dropped_query_external_anchor:private RAG corpus",
+            "dropped_query_external_anchor:leakage-free retrieval intent",
+            "dropped_query_external_anchor:real anchors",
+            "fallback_anchors",
+            "dropped_query_external_must_keep_terms:leakage-free retrieval intent",
+            "dropped_query_external_must_keep_terms:private RAG corpus",
+            "dropped_query_external_must_keep_terms:Entity_123",
+            "dropped_query_external_must_keep_terms:Work_AB0001",
+            "dropped_query_external_must_keep_terms:Person_X9",
+            "dropped_query_external_must_keep_terms:Location_Z7",
+            "dropped_query_external_must_keep_terms:real anchors",
+            "fallback_must_keep_terms"
+          ],
+          "raw_payload": "{\n  \"answer_type\": \"ENTITY\",\n  \"anchors\": [\n    {\"text\": \"Entity_123\", \"role\": \"subject\", \"importance\": \"primary\"},\n    {\"text\": \"Work_AB0001\", \"role\": \"work\", \"importance\": \"primary\"},\n    {\"text\": \"Person_X9\", \"role\": \"person\", \"importance\": \"primary\"},\n    {\"text\": \"Location_Z7\", \"role\": \"location\", \"importance\": \"primary\"},\n    {\"text\": \"private RAG corpus\", \"role\": \"context\", \"importance\": \"support\"},\n    {\"text\": \"leakage-free retrieval intent\", \"role\": \"context\", \"importance\": \"support\"},\n    {\"text\": \"real anchors\", \"role\": \"modifier\", \"importance\": \"support\"}\n  ],\n  \"query_focus_terms\": [\n    \"leakage-free retrieval intent\",\n    \"private RAG corpus\",\n    \"Entity_123\",\n    \"Work_AB0001\",\n    \"Person_X9\",\n    \"Location_Z7\",\n    \"real anchors\"\n  ],\n  \"relation_class\": \"other\",\n  \"relation_confidence\": \"high\",\n  \"retrieval_policy\": \"anchor_only\"\n}"
+        }
+      }
+    },
+    "test2": {
+      "query": "who sings love will keep us alive by the Kelmar0842",
+      "answers": [],
+      "query2doc": "\"Love Will Keep Us Alive\" is performed by the Eagles, released on their 1994 album Hell Freezes Over. The lead vocal on the Eagles' recording is sung by bassist Timothy B. Schmit; the song was written by Jim Capaldi, Paul Carrack, and Peter Vale. If you saw a version labeled \"by Kelmar0842,\" that's likely a user-uploaded copy of the Eagles' song rather than the original artist.",
+      "masked_query2doc": "\"Love Will Keep Us Alive\" is performed by [ORGANIZATION], released on their 1994 album Hell Freezes Over. The lead vocal on [ORGANIZATION]' recording is sung by bassist [PERSON]; the song was written by Jim Capaldi, Paul Carrack, and Peter Vale. If you saw a version labeled \"by Kelmar0842,\" that's likely a user-uploaded copy of the [ORGANIZATION]' song rather than the original artist.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 66,
+        "masked_query2doc_token_count": 62,
+        "query2doc_capitalized_span_count": 12,
+        "masked_query2doc_capitalized_span_count": 7,
+        "mask_slot_count": 4
+      },
+      "llm_reformat_raw": "{\"answer_type\":\"PERSON\",\"anchors\":[{\"text\":\"love will keep us alive\",\"role\":\"work\",\"importance\":\"primary\"},{\"text\":\"Kelmar0842\",\"role\":\"organization\",\"importance\":\"support\"}],\"query_focus_terms\":[\"love will keep us alive\",\"Kelmar0842\",\"sings\"],\"relation_class\":\"performer\",\"relation_confidence\":\"medium\",\"retrieval_policy\":\"anchor_plus_one_cue\"}",
+      "llm_reformat_package": {
+        "query": "who sings love will keep us alive by the Kelmar0842",
+        "answer_type": "PERSON",
+        "answer_slot": "[PERSON]",
+        "known_anchors": [
+          {
+            "text": "love will keep us alive",
+            "role": "primary_work",
+            "required": true
+          },
+          {
+            "text": "Kelmar0842",
+            "role": "support_organization",
+            "required": true
+          }
+        ],
+        "relation_frame": {
+          "name": "query_relation",
+          "confidence": "medium",
+          "core_relation_terms": [
+            "performer"
+          ],
+          "forbidden_answer_generation": true
+        },
+        "retrieval_views": {
+          "llm_anchor_view": "who sings love will keep us alive by the Kelmar0842 love will keep us alive Kelmar0842",
+          "llm_intent_terms_view": "who sings love will keep us alive by the Kelmar0842 love will keep us alive Kelmar0842 sings performer",
+          "llm_dense_view": "who sings love will keep us alive by the Kelmar0842 performer",
+          "llm_dense_expansion_view": "performer love will keep us alive",
+          "llm_bm25_view": "who sings love will keep us alive by the Kelmar0842 love will keep us alive Kelmar0842 sings performer",
+          "llm_corpus_style_view": "who sings love will keep us alive by the Kelmar0842 love will keep us alive Kelmar0842 sings performer"
+        },
+        "constraints": {
+          "must_preserve_anchors": true,
+          "must_include_expected_slot": false,
+          "must_not_include_query_external_entities": true,
+          "must_not_include_refusal": true
+        },
+        "validation": {
+          "ok": true,
+          "issues": []
+        },
+        "metadata": {
+          "builder": "llm_structured_reformat_v2",
+          "fallback_used": false,
+          "relation_class": "performer",
+          "retrieval_policy": "anchor_plus_one_cue",
+          "sanitizer_issues": [],
+          "raw_payload": "{\"answer_type\":\"PERSON\",\"anchors\":[{\"text\":\"love will keep us alive\",\"role\":\"work\",\"importance\":\"primary\"},{\"text\":\"Kelmar0842\",\"role\":\"organization\",\"importance\":\"support\"}],\"query_focus_terms\":[\"love will keep us alive\",\"Kelmar0842\",\"sings\"],\"relation_class\":\"performer\",\"relation_confidence\":\"medium\",\"retrieval_policy\":\"anchor_plus_one_cue\"}"
+        }
+      }
+    },
+    "test3": {
+      "query": "who is the leader of the SolacePoint0639 pc party",
+      "answers": [],
+      "query2doc": "I don’t have information on a party called \"SolacePoint0639 PC.\" If you mean a local, online, or fictional group, please give more context (country/region or a link). To find the leader, check the party’s official website or social-media pages, look up party registration records with the relevant election authority, or search recent news or press releases; you can share any link or detail and I’ll help look it up.",
+      "masked_query2doc": "I don’t have information on a party called \"SolacePoint0639 PC.\" If you mean a local, online, or fictional group, please give more context (country/region or a link). To find the leader, check the party’s official website or social-media pages, look up party registration records with the relevant election authority, or search recent news or press releases; you can share any link or detail and I’ll help look it up.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 69,
+        "masked_query2doc_token_count": 69,
+        "query2doc_capitalized_span_count": 2,
+        "masked_query2doc_capitalized_span_count": 2,
+        "mask_slot_count": 0
+      },
+      "llm_reformat_raw": "{\"answer_type\":\"PERSON\",\"anchors\":[{\"text\":\"SolacePoint0639 pc party\",\"role\":\"organization\",\"importance\":\"primary\"},{\"text\":\"leader\",\"role\":\"context\",\"importance\":\"support\"}],\"query_focus_terms\":[\"SolacePoint0639 pc party\",\"leader\",\"who is\"],\"relation_class\":\"person_role\",\"relation_confidence\":\"high\",\"retrieval_policy\":\"anchor_only\"}",
+      "llm_reformat_package": {
+        "query": "who is the leader of the SolacePoint0639 pc party",
+        "answer_type": "PERSON",
+        "answer_slot": "[PERSON]",
+        "known_anchors": [
+          {
+            "text": "leader",
+            "role": "support_context",
+            "required": true
+          },
+          {
+            "text": "SolacePoint0639 pc party",
+            "role": "primary_organization",
+            "required": true
+          }
+        ],
+        "relation_frame": {
+          "name": "query_relation",
+          "confidence": "medium",
+          "core_relation_terms": [],
+          "forbidden_answer_generation": true
+        },
+        "retrieval_views": {
+          "llm_anchor_view": "who is the leader of the SolacePoint0639 pc party leader SolacePoint0639 pc party",
+          "llm_intent_terms_view": "who is the leader of the SolacePoint0639 pc party leader SolacePoint0639 pc party who is",
+          "llm_dense_view": "who is the leader of the SolacePoint0639 pc party",
+          "llm_dense_expansion_view": "leader",
+          "llm_bm25_view": "who is the leader of the SolacePoint0639 pc party leader SolacePoint0639 pc party who is",
+          "llm_corpus_style_view": "who is the leader of the SolacePoint0639 pc party leader SolacePoint0639 pc party who is role"
+        },
+        "constraints": {
+          "must_preserve_anchors": true,
+          "must_include_expected_slot": false,
+          "must_not_include_query_external_entities": true,
+          "must_not_include_refusal": true
+        },
+        "validation": {
+          "ok": true,
+          "issues": []
+        },
+        "metadata": {
+          "builder": "llm_structured_reformat_v2",
+          "fallback_used": false,
+          "relation_class": "person_role",
+          "retrieval_policy": "anchor_only",
+          "sanitizer_issues": [],
+          "raw_payload": "{\"answer_type\":\"PERSON\",\"anchors\":[{\"text\":\"SolacePoint0639 pc party\",\"role\":\"organization\",\"importance\":\"primary\"},{\"text\":\"leader\",\"role\":\"context\",\"importance\":\"support\"}],\"query_focus_terms\":[\"SolacePoint0639 pc party\",\"leader\",\"who is\"],\"relation_class\":\"person_role\",\"relation_confidence\":\"high\",\"retrieval_policy\":\"anchor_only\"}"
+        }
+      }
+    },
+    "test4": {
+      "query": "LumenGate1324 gritty dirt band Vireo0859 in the KeplerRow1472 album",
+      "answers": [],
+      "query2doc": "I can’t find any reliable record of an album or artists matching “LumenGate1324,” “gritty dirt band,” “Vireo0859,” or “KeplerRow1472.” Those strings look like usernames or fictional/obscure names, so it’s possible the release is very new, self-published, misspelled, or not indexed by major databases.\n\nTo track this down, try these steps:\n- Check streaming platforms (Spotify, Apple Music, YouTube) and Bandcamp using exact spellings and variations.\n- Search music databases like Discogs and MusicBrainz for album/artist credits.\n- Look for social media or official pages for the artists/album (Instagram, Twitter/X, Facebook).\n- If you have a file or link, open its metadata or liner notes for composer/credit info.\nIf you want, paste any links, screenshots, or exact spellings you have and I’ll help search or interpret the credits.",
+      "masked_query2doc": "[ENTITY] “LumenGate1324,” “gritty dirt band,” “Vireo0859,” or “KeplerRow1472.” Those strings look like usernames or fictional/obscure names, so it’s possible the release is very new, self-published, misspelled, or not indexed by major databases.\n\nTo track this down, try these steps:\n- Check streaming platforms (Spotify, Apple Music, YouTube) and Bandcamp using exact spellings and variations.\n- Search music databases like Discogs and MusicBrainz for album/artist credits.\n- Look for social media or official pages for the artists/album (Instagram, Twitter/X, Facebook).\n- If you have a file or link, open its metadata or liner notes for composer/credit info.\nIf you want, paste any links, screenshots, or exact spellings you have and I’ll help search or interpret the credits.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 127,
+        "masked_query2doc_token_count": 116,
+        "query2doc_capitalized_span_count": 14,
+        "masked_query2doc_capitalized_span_count": 14,
+        "mask_slot_count": 1
+      },
+      "llm_reformat_raw": "{\"answer_type\":\"ORGANIZATION\",\"anchors\":[{\"text\":\"LumenGate1324\",\"role\":\"work\",\"importance\":\"primary\"},{\"text\":\"Vireo0859\",\"role\":\"organization\",\"importance\":\"support\"},{\"text\":\"KeplerRow1472 album\",\"role\":\"work\",\"importance\":\"support\"},{\"text\":\"gritty dirt band\",\"role\":\"modifier\",\"importance\":\"support\"}],\"query_focus_terms\":[\"LumenGate1324\",\"gritty dirt band\",\"Vireo0859\",\"KeplerRow1472 album\",\"in\"],\"relation_class\":\"performer\",\"relation_confidence\":\"medium\",\"retrieval_policy\":\"anchor_plus_one_cue\"}",
+      "llm_reformat_package": {
+        "query": "LumenGate1324 gritty dirt band Vireo0859 in the KeplerRow1472 album",
+        "answer_type": "ORGANIZATION",
+        "answer_slot": "[ORGANIZATION]",
+        "known_anchors": [
+          {
+            "text": "LumenGate1324",
+            "role": "primary_work",
+            "required": true
+          },
+          {
+            "text": "gritty dirt band",
+            "role": "support_modifier",
+            "required": true
+          },
+          {
+            "text": "Vireo0859",
+            "role": "support_organization",
+            "required": true
+          },
+          {
+            "text": "KeplerRow1472 album",
+            "role": "support_work",
+            "required": true
+          }
+        ],
+        "relation_frame": {
+          "name": "query_relation",
+          "confidence": "medium",
+          "core_relation_terms": [
+            "performer"
+          ],
+          "forbidden_answer_generation": true
+        },
+        "retrieval_views": {
+          "llm_anchor_view": "LumenGate1324 gritty dirt band Vireo0859 in the KeplerRow1472 album LumenGate1324 gritty dirt band Vireo0859 KeplerRow1472 album",
+          "llm_intent_terms_view": "LumenGate1324 gritty dirt band Vireo0859 in the KeplerRow1472 album LumenGate1324 gritty dirt band Vireo0859 performer",
+          "llm_dense_view": "LumenGate1324 gritty dirt band Vireo0859 in the KeplerRow1472 album performer",
+          "llm_dense_expansion_view": "performer LumenGate1324",
+          "llm_bm25_view": "LumenGate1324 gritty dirt band Vireo0859 in the KeplerRow1472 album LumenGate1324 gritty dirt band Vireo0859 KeplerRow1472 album performer",
+          "llm_corpus_style_view": "LumenGate1324 gritty dirt band Vireo0859 in the KeplerRow1472 album LumenGate1324 gritty dirt band Vireo0859 KeplerRow1472 album performer"
+        },
+        "constraints": {
+          "must_preserve_anchors": true,
+          "must_include_expected_slot": false,
+          "must_not_include_query_external_entities": true,
+          "must_not_include_refusal": true
+        },
+        "validation": {
+          "ok": true,
+          "issues": []
+        },
+        "metadata": {
+          "builder": "llm_structured_reformat_v2",
+          "fallback_used": false,
+          "relation_class": "performer",
+          "retrieval_policy": "anchor_plus_one_cue",
+          "sanitizer_issues": [],
+          "raw_payload": "{\"answer_type\":\"ORGANIZATION\",\"anchors\":[{\"text\":\"LumenGate1324\",\"role\":\"work\",\"importance\":\"primary\"},{\"text\":\"Vireo0859\",\"role\":\"organization\",\"importance\":\"support\"},{\"text\":\"KeplerRow1472 album\",\"role\":\"work\",\"importance\":\"support\"},{\"text\":\"gritty dirt band\",\"role\":\"modifier\",\"importance\":\"support\"}],\"query_focus_terms\":[\"LumenGate1324\",\"gritty dirt band\",\"Vireo0859\",\"KeplerRow1472 album\",\"in\"],\"relation_class\":\"performer\",\"relation_confidence\":\"medium\",\"retrieval_policy\":\"anchor_plus_one_cue\"}"
+        }
+      }
+    }
+  }
+}

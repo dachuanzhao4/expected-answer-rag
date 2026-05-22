@@ -1,0 +1,212 @@
+{
+  "dataset": "nq",
+  "num_corpus": 200000,
+  "num_queries": 500,
+  "completed_queries": 500,
+  "num_qrels_queries": 500,
+  "retriever": "dense",
+  "embedding_model": "BAAI/bge-base-en-v1.5",
+  "query_prefix": "Represent this sentence for searching relevant passages: ",
+  "embedding_cache": "D:\\Desktop\\expected_answer_rag\\outputs\\embeddings\\nq_stage2_200k_bge_base",
+  "generator": "openrouter",
+  "model": "openai/gpt-5-mini",
+  "prompt_style": "query2doc_fewshot",
+  "query_repeat": null,
+  "dense_separator": "[SEP]",
+  "top_k": 20,
+  "metrics": {
+    "query_only": {
+      "recall@5": 0.7816666666666666,
+      "recall@10": 0.8996666666666666,
+      "recall@20": 0.9476666666666667,
+      "mrr@10": 0.6387896825396825,
+      "ndcg@10": 0.6868432743085857
+    },
+    "query2doc_pseudo_doc_only": {
+      "recall@5": 0.82,
+      "recall@10": 0.9116666666666666,
+      "recall@20": 0.958,
+      "mrr@10": 0.6793412698412699,
+      "ndcg@10": 0.7250947576391609
+    },
+    "masked_query2doc_pseudo_doc_only": {
+      "recall@5": 0.7903333333333333,
+      "recall@10": 0.8856666666666666,
+      "recall@20": 0.9373333333333334,
+      "mrr@10": 0.6391261904761905,
+      "ndcg@10": 0.686250596406804
+    },
+    "query2doc_expanded_query": {
+      "recall@5": 0.8576666666666666,
+      "recall@10": 0.9286666666666666,
+      "recall@20": 0.963,
+      "mrr@10": 0.7017912698412698,
+      "ndcg@10": 0.745093005888164
+    },
+    "masked_query2doc_expanded_query": {
+      "recall@5": 0.8263333333333334,
+      "recall@10": 0.9143333333333333,
+      "recall@20": 0.9563333333333334,
+      "mrr@10": 0.6722579365079365,
+      "ndcg@10": 0.7178341760274601
+    }
+  },
+  "method_ranking": [
+    {
+      "method": "query2doc_expanded_query",
+      "ndcg@10": 0.745093005888164,
+      "delta_vs_query_only": 0.058249731579578246
+    },
+    {
+      "method": "query2doc_pseudo_doc_only",
+      "ndcg@10": 0.7250947576391609,
+      "delta_vs_query_only": 0.03825148333057515
+    },
+    {
+      "method": "masked_query2doc_expanded_query",
+      "ndcg@10": 0.7178341760274601,
+      "delta_vs_query_only": 0.03099090171887442
+    },
+    {
+      "method": "query_only",
+      "ndcg@10": 0.6868432743085857,
+      "delta_vs_query_only": 0.0
+    },
+    {
+      "method": "masked_query2doc_pseudo_doc_only",
+      "ndcg@10": 0.686250596406804,
+      "delta_vs_query_only": -0.0005926779017817463
+    }
+  ],
+  "generation_summary": {
+    "avg_query2doc_token_count": 55.698,
+    "avg_masked_query2doc_token_count": 47.836,
+    "avg_query2doc_capitalized_span_count": 6.622,
+    "avg_masked_query2doc_capitalized_span_count": 5.258,
+    "avg_mask_slot_count": 1.966
+  },
+  "leakage_bucket_metrics": {
+    "query_only": {
+      "unknown_gold_answer": {
+        "recall@5": 0.7816666666666666,
+        "recall@10": 0.8996666666666666,
+        "recall@20": 0.9476666666666667,
+        "mrr@10": 0.6387896825396825,
+        "ndcg@10": 0.6868432743085857
+      }
+    },
+    "query2doc_pseudo_doc_only": {
+      "unknown_gold_answer": {
+        "recall@5": 0.82,
+        "recall@10": 0.9116666666666666,
+        "recall@20": 0.958,
+        "mrr@10": 0.6793412698412699,
+        "ndcg@10": 0.7250947576391609
+      }
+    },
+    "masked_query2doc_pseudo_doc_only": {
+      "unknown_gold_answer": {
+        "recall@5": 0.7903333333333333,
+        "recall@10": 0.8856666666666666,
+        "recall@20": 0.9373333333333334,
+        "mrr@10": 0.6391261904761905,
+        "ndcg@10": 0.686250596406804
+      }
+    },
+    "query2doc_expanded_query": {
+      "unknown_gold_answer": {
+        "recall@5": 0.8576666666666666,
+        "recall@10": 0.9286666666666666,
+        "recall@20": 0.963,
+        "mrr@10": 0.7017912698412698,
+        "ndcg@10": 0.745093005888164
+      }
+    },
+    "masked_query2doc_expanded_query": {
+      "unknown_gold_answer": {
+        "recall@5": 0.8263333333333334,
+        "recall@10": 0.9143333333333333,
+        "recall@20": 0.9563333333333334,
+        "mrr@10": 0.6722579365079365,
+        "ndcg@10": 0.7178341760274601
+      }
+    }
+  },
+  "sample_generations": {
+    "test0": {
+      "query": "what is non controlling interest on balance sheet",
+      "answers": [],
+      "query2doc": "Non-controlling interest (also called minority interest) is the portion of a subsidiary’s equity that is not owned by the parent company. On a consolidated balance sheet it appears in the equity section and represents the non-parent shareholders’ share of the subsidiary’s net assets. In consolidated financial statements the parent reports the subsidiary’s full assets, liabilities and results, but discloses the portion of net assets and net income attributable to the non-controlling owners.",
+      "masked_query2doc": "Non-controlling interest (also called minority interest) [ENTITY]. On a consolidated balance sheet [ENTITY]. In consolidated financial statements the parent reports the subsidiary’s full assets, liabilities and results, but discloses the portion of net assets and net income attributable to the non-controlling owners.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 72,
+        "masked_query2doc_token_count": 42,
+        "query2doc_capitalized_span_count": 3,
+        "masked_query2doc_capitalized_span_count": 3,
+        "mask_slot_count": 2
+      }
+    },
+    "test1": {
+      "query": "how many episodes are in chicago fire season 4",
+      "answers": [],
+      "query2doc": "Passage: Chicago Fire season 4 consists of 23 episodes.",
+      "masked_query2doc": "Passage: Chicago Fire season 4 consists of [NUMBER] episodes.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 9,
+        "masked_query2doc_token_count": 9,
+        "query2doc_capitalized_span_count": 2,
+        "masked_query2doc_capitalized_span_count": 2,
+        "mask_slot_count": 1
+      }
+    },
+    "test2": {
+      "query": "who sings love will keep us alive by the eagles",
+      "answers": [],
+      "query2doc": "\"Love Will Keep Us Alive\" is performed by the Eagles, with lead vocals by bassist Timothy B. Schmit. It was released on their 1994 reunion album Hell Freezes Over.",
+      "masked_query2doc": "\"Love Will Keep Us Alive\" is performed by the Eagles, with lead vocals by bassist [PERSON]. It was released on their 1994 reunion album Hell Freezes Over.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 29,
+        "masked_query2doc_token_count": 27,
+        "query2doc_capitalized_span_count": 7,
+        "masked_query2doc_capitalized_span_count": 5,
+        "mask_slot_count": 1
+      }
+    },
+    "test3": {
+      "query": "who is the leader of the ontario pc party",
+      "answers": [],
+      "query2doc": "The leader of the Ontario Progressive Conservative (PC) Party is Doug Ford. He has led the party since 2018 and serves as the Premier of Ontario (information current as of June 2024).",
+      "masked_query2doc": "The leader of the Ontario Progressive Conservative (PC) Party is [PERSON]. He has led the party since 2018 and serves as the Premier of Ontario (information current as of June 2024).",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 32,
+        "masked_query2doc_token_count": 31,
+        "query2doc_capitalized_span_count": 7,
+        "masked_query2doc_capitalized_span_count": 6,
+        "mask_slot_count": 1
+      }
+    },
+    "test4": {
+      "query": "nitty gritty dirt band fishin in the dark album",
+      "answers": [],
+      "query2doc": "\"Fishin' in the Dark\" is a song by the Nitty Gritty Dirt Band, released in 1987 on their album Hold On. Written by Wendy Waldman and Jim Photoglo, it became one of the band's biggest hits.",
+      "masked_query2doc": "\"Fishin' in the Dark\" is a song by the Nitty Gritty Dirt Band, released in 1987 on their album [TITLE]. Written by Wendy Waldman and Jim Photoglo, it became one of the band's biggest hits.",
+      "features": {
+        "query2doc_contains_gold_answer": null,
+        "masked_query2doc_contains_gold_answer": null,
+        "query2doc_token_count": 36,
+        "masked_query2doc_token_count": 35,
+        "query2doc_capitalized_span_count": 7,
+        "masked_query2doc_capitalized_span_count": 6,
+        "mask_slot_count": 1
+      }
+    }
+  }
+}

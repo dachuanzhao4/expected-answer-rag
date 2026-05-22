@@ -1,0 +1,31 @@
+{
+  "source_dataset": "nq",
+  "mode": "plausible",
+  "source_corpus": 200000,
+  "source_queries": 500,
+  "target_queries": null,
+  "source_qrels_queries": 500,
+  "renamed_corpus": 200000,
+  "renamed_queries": 500,
+  "renamed_qrels_queries": 500,
+  "mapping_size": 2042,
+  "query_rename_policy": "safe_aligned",
+  "effective_query_rename_policy": "all",
+  "replacement_token_policy": "preserve",
+  "replacement_granularity": "token",
+  "query_ngram_anchors": "off",
+  "require_named_query_replacement": false,
+  "skipped_no_qrels": 0,
+  "skipped_no_query_change": 0,
+  "skipped_entity_only_query": 0,
+  "skipped_unaligned_query_anchors": 0,
+  "kept_queries_with_replacements": 284,
+  "kept_queries_without_replacements": 216,
+  "queries_with_dropped_unaligned_anchors": 0,
+  "dropped_unaligned_query_anchors": 0,
+  "missing_query_replacements": 0,
+  "replacement_kinds": {
+    "ENTITY": 1794,
+    "NUMBER": 248
+  }
+}

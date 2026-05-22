@@ -13,15 +13,15 @@ CAPITALIZED_RE = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}\b")
 SLOT_RE = re.compile(r"\[[A-Z_]+\]")
 
 
-def generation_features(query: Query, expected: str, masked: str, hyde_doc: str) -> Dict[str, object]:
+def generation_features(query: Query, query2doc: str, masked_query2doc: str) -> Dict[str, object]:
     return {
-        "contains_gold_answer": contains_any_answer(expected, query.answers),
-        "masked_contains_gold_answer": contains_any_answer(masked, query.answers),
-        "expected_token_count": len(expected.split()),
-        "hyde_token_count": len(hyde_doc.split()),
-        "expected_capitalized_span_count": len(extract_capitalized_spans(expected)),
-        "hyde_capitalized_span_count": len(extract_capitalized_spans(hyde_doc)),
-        "mask_slot_count": len(SLOT_RE.findall(masked)),
+        "query2doc_contains_gold_answer": contains_any_answer(query2doc, query.answers),
+        "masked_query2doc_contains_gold_answer": contains_any_answer(masked_query2doc, query.answers),
+        "query2doc_token_count": len(query2doc.split()),
+        "masked_query2doc_token_count": len(masked_query2doc.split()),
+        "query2doc_capitalized_span_count": len(extract_capitalized_spans(query2doc)),
+        "masked_query2doc_capitalized_span_count": len(extract_capitalized_spans(masked_query2doc)),
+        "mask_slot_count": len(SLOT_RE.findall(masked_query2doc)),
     }
 
 
@@ -48,17 +48,17 @@ def summarize_generation_features(records: Iterable[Mapping[str, object]]) -> Di
         return {}
     summary: Dict[str, float] = {}
     numeric_keys = [
-        "expected_token_count",
-        "hyde_token_count",
-        "expected_capitalized_span_count",
-        "hyde_capitalized_span_count",
+        "query2doc_token_count",
+        "masked_query2doc_token_count",
+        "query2doc_capitalized_span_count",
+        "masked_query2doc_capitalized_span_count",
         "mask_slot_count",
     ]
     for key in numeric_keys:
         values = [float(row[key]) for row in rows if row.get(key) is not None]
         summary[f"avg_{key}"] = sum(values) / len(values) if values else 0.0
 
-    for key in ["contains_gold_answer", "masked_contains_gold_answer"]:
+    for key in ["query2doc_contains_gold_answer", "masked_query2doc_contains_gold_answer"]:
         values = [row.get(key) for row in rows if row.get(key) is not None]
         if values:
             summary[f"rate_{key}"] = sum(1 for value in values if value) / len(values)
@@ -71,16 +71,16 @@ def evaluate_by_leakage_bucket(
     features_by_query: Mapping[str, Mapping[str, object]],
 ) -> Dict[str, Dict[str, float]]:
     buckets = {
-        "expected_contains_gold": set(),
-        "expected_not_contains_gold": set(),
+        "query2doc_contains_gold": set(),
+        "query2doc_not_contains_gold": set(),
         "unknown_gold_answer": set(),
     }
     for qid, features in features_by_query.items():
-        value = features.get("contains_gold_answer")
+        value = features.get("query2doc_contains_gold_answer")
         if value is True:
-            buckets["expected_contains_gold"].add(qid)
+            buckets["query2doc_contains_gold"].add(qid)
         elif value is False:
-            buckets["expected_not_contains_gold"].add(qid)
+            buckets["query2doc_not_contains_gold"].add(qid)
         else:
             buckets["unknown_gold_answer"].add(qid)
 

@@ -75,17 +75,25 @@ class SentenceTransformerRetriever:
     query_prefix: str = "Represent this sentence for searching relevant passages: "
     embedding_cache: str | None = None
     chunk_size: int = 1024
+    device: str | None = None
 
     def __post_init__(self) -> None:
         try:
             import numpy as np
+            # On Windows/Python 3.13, sentence-transformers can trigger a native
+            # pyarrow access violation when its optional data stack is imported
+            # lazily in a different order. Importing these first keeps dense runs
+            # stable without changing retrieval behavior.
+            import pyarrow  # noqa: F401
+            import datasets  # noqa: F401
+            import pandas  # noqa: F401
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
             raise RuntimeError(
-                "Install 'sentence-transformers' and 'numpy' to use dense retrieval."
+                "Install 'sentence-transformers', 'numpy', 'pyarrow', 'datasets', and 'pandas' to use dense retrieval."
             ) from exc
         self._np = np
-        self._model = SentenceTransformer(self.model_name)
+        self._model = SentenceTransformer(self.model_name, device=self.device)
         self._doc_ids = [doc.doc_id for doc in self.documents]
         cached = self._load_cached_embeddings()
         if cached is not None:
@@ -134,12 +142,18 @@ class SentenceTransformerRetriever:
         embeddings_path, metadata_path = paths
         if not embeddings_path.exists() or not metadata_path.exists():
             return None
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            return None
         if metadata.get("model_name") != self.model_name:
             return None
         if metadata.get("doc_ids") != self._doc_ids:
             return None
-        return self._np.load(embeddings_path)
+        try:
+            return self._np.load(embeddings_path)
+        except (OSError, ValueError):
+            return None
 
     def _save_cached_embeddings(self, embeddings) -> None:
         paths = self._cache_paths()
@@ -175,7 +189,10 @@ class SentenceTransformerRetriever:
         embeddings_path, metadata_path = paths
         if not embeddings_path.exists() or not metadata_path.exists():
             return None
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            return None
         expected_doc_ids = self._doc_ids[start:end]
         if metadata.get("model_name") != self.model_name:
             return None
@@ -183,7 +200,10 @@ class SentenceTransformerRetriever:
             return None
         if metadata.get("doc_ids_sha256") != _hash_strings(expected_doc_ids):
             return None
-        chunk = self._np.load(embeddings_path)
+        try:
+            chunk = self._np.load(embeddings_path)
+        except (OSError, ValueError):
+            return None
         if chunk.shape[0] != end - start:
             return None
         return chunk
@@ -214,6 +234,7 @@ def make_retriever(
     query_prefix: str = "Represent this sentence for searching relevant passages: ",
     embedding_cache: str | None = None,
     embedding_chunk_size: int = 1024,
+    embedding_device: str | None = None,
 ) -> Retriever:
     if kind == "bm25":
         return BM25Retriever(documents)
@@ -225,6 +246,7 @@ def make_retriever(
             query_prefix=query_prefix,
             embedding_cache=embedding_cache,
             chunk_size=embedding_chunk_size,
+            device=embedding_device,
         )
     raise ValueError(f"Unknown retriever kind: {kind}")
 
